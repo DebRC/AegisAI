@@ -1,39 +1,7 @@
-import os
-from pathlib import Path
-
-from pydantic import BaseModel, ConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-ENV_FILE = BASE_DIR / ".env"
-
-
-def load_env_file(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-
-    if not path.exists():
-        return values
-
-    for line in path.read_text().splitlines():
-        line = line.strip()
-
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        value = value.strip()
-
-        if value.startswith(("'", '"')) and value.endswith(value[0]):
-            value = value[1:-1]
-
-        values[key.strip()] = value
-
-    return values
-
-
-class Settings(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
+class Settings(BaseSettings):
     APP_NAME: str
     APP_VERSION: str
     APP_ENV: str
@@ -44,5 +12,16 @@ class Settings(BaseModel):
     DATABASE_URL: str
     QDRANT_URL: str
 
+    JWT_SECRET_KEY: str
+    JWT_ALGORITHM: str
 
-settings = Settings(**{**load_env_file(ENV_FILE), **os.environ})
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    REFRESH_TOKEN_EXPIRE_DAYS: int
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+    )
+
+
+settings = Settings()
