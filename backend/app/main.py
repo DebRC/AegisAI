@@ -3,6 +3,7 @@ from fastapi import FastAPI
 try:
     from app.api.health import router as health_router
     from app.api.database import router as database_router
+    from app.api.protected import router as protected_router
     from app.core.config import settings
     from app.core.logging import logger
 except ModuleNotFoundError as exc:
@@ -10,6 +11,7 @@ except ModuleNotFoundError as exc:
         raise
     from api.health import router as health_router
     from api.database import router as database_router
+    from app.api.protected import router as protected_router
     from core.config import settings
     from core.logging import logger
 
@@ -20,6 +22,7 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(database_router)
+app.include_router(protected_router)
 
 @app.on_event("startup")
 def startup():
