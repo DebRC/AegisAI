@@ -1,73 +1,10 @@
-# Environment and secrets
-.env
-.env.*
-!.env.example
-!.env.*.example
-
-# Python virtual environments
-.venv/
-venv/
-env/
-ENV/
-backend/venv/
-
-# Python generated files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Python packaging/build output
-build/
-dist/
-*.egg-info/
-.eggs/
-wheels/
-
-# Python test, coverage, and tool caches
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.tox/
-.nox/
-.coverage
-.coverage.*
-coverage.xml
-htmlcov/
-.cache/
-
-# Node/Next.js generated files
-node_modules/
-.next/
-out/
-.turbo/
-.vercel/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Runtime logs and local databases
-*.log
-logs/
-*.pid
-*.sqlite
-*.sqlite3
-*.db
-
-# Local Docker/container data
-postgres_data/
-qdrant_data/
-docker-data/
-
-# Infrastructure generated files
-.terraform/
-*.tfstate
-*.tfstate.*
-*.tfplan
-
-# OS/editor noise
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-*~
+backend/venv
+backend/.env
+backend/__pycache__
+backend/alembic/__pycache__
+backend/alembic/versions/__pycache__
+backend/app/api/__pycache__
+backend/app/core/__pycache__
+backend/app/db/__pycache__
+backend/app/models/__pycache__
+backend/app/repositories/__pycache__
