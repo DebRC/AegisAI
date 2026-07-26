@@ -7,7 +7,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.user import User
 
 from app.repositories.user_repository import UserRepository
-from app.repositories.user_repository import RefreshTokenRepository
+from app.repositories.refresh_token_repository import RefreshTokenRepository
 
 from app.schemas.auth import LoginRequest
 from app.schemas.auth import RegisterRequest
@@ -18,6 +18,10 @@ from app.security.hashing import verify_password
 
 from app.security.jwt import create_access_token
 from app.security.jwt import create_refresh_token
+from app.security.jwt import refresh_token_expiry
+
+from app.core.exceptions import AuthenticationError
+from app.core.exceptions import UserAlreadyExistsError
 
 class AuthService:
 

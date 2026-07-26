@@ -7,6 +7,8 @@ from jose import jwt
 
 from app.core.config import settings
 from app.schemas.token import TokenPayload
+from app.security.constants import ACCESS_TOKEN
+from app.security.constants import REFRESH_TOKEN
 
 def create_access_token(
     user_id: int,
