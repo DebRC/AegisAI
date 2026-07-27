@@ -4,7 +4,7 @@ AegisAI is an enterprise-focused Retrieval-Augmented Generation (RAG) platform i
 
 The project is deliberately being built in layers: establish a dependable backend and authentication foundation first, then add RBAC before document ingestion and permission-aware retrieval.
 
-> **Current status:** Phases 1–3 (foundation, database, and JWT authentication) are complete. Phase 4, Role-Based Access Control (RBAC), is next.
+> **Current status:** Phases 1–3 (foundation, database, and JWT authentication) are complete. Phase 4.1 has established the RBAC contract; RBAC implementation is next.
 
 ## What is implemented
 
@@ -179,6 +179,7 @@ created_at, updated_at
 - [x] Phase 1 — Foundation and containerized services
 - [x] Phase 2 — Database layer and Alembic
 - [x] Phase 3 — Authentication, refresh-token lifecycle, and transaction boundaries
+- [x] Phase 4.1 — RBAC contract and canonical permission catalogue
 - [ ] Phase 4 — RBAC: roles, permissions, assignments, and authorization dependencies
 - [ ] Phase 5 — Enterprise SSO: Google, GitHub, and Microsoft Entra ID
 - [ ] Phase 6 — Document management and ingestion
