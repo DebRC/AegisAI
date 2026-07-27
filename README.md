@@ -4,7 +4,7 @@ AegisAI is an enterprise-focused Retrieval-Augmented Generation (RAG) platform i
 
 The project is deliberately being built in layers: establish a dependable backend and authentication foundation first, then add RBAC before document ingestion and permission-aware retrieval.
 
-> **Current status:** Phases 1–3 (foundation, database, and JWT authentication) are complete. Phase 4.1–4.4 established the RBAC contract, schema, bootstrap data, and repositories; RBAC services are next.
+> **Current status:** Phases 1–3 (foundation, database, and JWT authentication) are complete. Phase 4.1–4.5 established the RBAC contract, schema, bootstrap data, repositories, and service operations; RBAC APIs are next.
 
 ## What is implemented
 
@@ -65,6 +65,63 @@ backend/
 ```
 
 This will remain layered until RBAC and SSO introduce enough domains to justify a vertical-slice refactor.
+
+### Authentication and authorization architecture
+
+Authentication answers **who is making this request?** Authorization answers **may that authenticated user perform this action?** They are separate checks that happen in order:
+
+```text
+Client
+  │
+  ├── POST /auth/login (email + password)
+  │     AuthService verifies the password and creates a token pair
+  │
+  └── receives:
+        access JWT: short-lived proof of identity
+        refresh JWT: longer-lived token used only to obtain a new pair
+```
+
+For every protected request, the backend first authenticates the access token:
+
+```text
+Authorization: Bearer <access JWT>
+                │
+                ▼
+       get_current_user dependency
+       1. Verify JWT signature and expiry
+       2. Require token type = access
+       3. Read the user ID from the token subject
+       4. Load that user from PostgreSQL
+                │
+                ▼
+       authenticated User, or HTTP 401
+```
+
+RBAC then authorizes the authenticated user against the permission required by the route:
+
+```text
+authenticated User + required permission (for example, documents:read)
+                │
+                ▼
+       permission dependency (Phase 4.7)
+                │
+                ▼
+PostgreSQL source of truth
+users ──< user_roles >── roles ──< role_permissions >── permissions
+                │                                      │
+          a user may have                       documents:read
+          several roles                         roles:manage
+                                               users:manage
+                │
+                ▼
+       permission assigned through any role?
+          ├── yes → run the route handler
+          └── no  → HTTP 403 Forbidden
+```
+
+The access JWT contains identity and token metadata, not a list of permissions. Keeping permissions in PostgreSQL means an administrator can change a user's role or a role's permissions and the next request uses the new policy without waiting for an old JWT to expire. The trade-off is one authorization query per protected, permission-aware request. This is the safer default for enterprise controls; caching can be introduced later only with deliberate invalidation rules.
+
+The seeded `administrator` system role is assigned every permission in the canonical catalogue. It is the initial operational access path, while regular roles and their assignments are managed through the RBAC service and, in the next steps, administrative APIs. The Phase 4.7 permission dependency will compose with the existing `get_current_user` dependency, so routes do not implement JWT or role checks themselves.
 
 ## Quick start
 
@@ -195,6 +252,7 @@ The command is idempotent: running it again for the same user makes no change.
 - [x] Phase 4.2 — RBAC models and database migration
 - [x] Phase 4.3 — Permission seeding and administrator bootstrap
 - [x] Phase 4.4 — RBAC repositories
+- [x] Phase 4.5 — RBAC service and transaction operations
 - [ ] Phase 4 — RBAC: roles, permissions, assignments, and authorization dependencies
 - [ ] Phase 5 — Enterprise SSO: Google, GitHub, and Microsoft Entra ID
 - [ ] Phase 6 — Document management and ingestion
