@@ -2,13 +2,11 @@ from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
 from fastapi import status
+from fastapi.security import OAuth2PasswordRequestForm
 
-from sqlalchemy.orm import Session
-
-from app.db.database import get_db
+from app.api.dependencies import get_auth_service
 
 from app.schemas.auth import (
-    LoginRequest,
     RegisterRequest,
 )
 
@@ -26,6 +24,7 @@ from app.core.exceptions import (
     AuthenticationError,
     UserAlreadyExistsError,
 )
+from app.models.user import User
 
 from app.security.dependencies import (
     get_current_user,
@@ -43,11 +42,8 @@ router = APIRouter(
 )
 def register(
     request: RegisterRequest,
-    db: Session = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ):
-
-    service = AuthService(db)
-
     try:
 
         return service.register(request)
@@ -64,15 +60,15 @@ def register(
     response_model=TokenResponse,
 )
 def login(
-    request: LoginRequest,
-    db: Session = Depends(get_db),
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    service: AuthService = Depends(get_auth_service),
 ):
-
-    service = AuthService(db)
-
     try:
 
-        return service.login(request)
+        return service.login(
+            email=form_data.username,
+            password=form_data.password,
+        )
 
     except AuthenticationError:
 
@@ -81,9 +77,14 @@ def login(
             detail="Invalid credentials",
         )
 
-@router.get("/me")
+@router.get(
+    "/me",
+    response_model=UserResponse,
+)
 def me(
-    current_user=Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
 
     return current_user

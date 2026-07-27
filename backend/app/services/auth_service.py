@@ -9,7 +9,6 @@ from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 
-from app.schemas.auth import LoginRequest
 from app.schemas.auth import RegisterRequest
 from app.schemas.token import TokenResponse
 
@@ -65,11 +64,12 @@ class AuthService:
 
     def login(
         self,
-        request: LoginRequest,
-    ):
+        email: str,
+        password: str,
+    ) -> TokenResponse:
 
         user = self.users.get_by_email(
-            request.email
+            email
         )
 
         if user is None:
@@ -78,7 +78,7 @@ class AuthService:
 
         if not verify_password(
 
-            request.password,
+            password,
 
             user.password_hash,
 
