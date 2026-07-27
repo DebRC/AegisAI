@@ -75,7 +75,7 @@ The following remain out of scope until later phases:
 1. Define this contract and the permission catalogue (4.1).
 2. Add the RBAC models and schema migration (4.2).
 3. Seed permissions and bootstrap the administrator role (4.3).
-4. Add repositories, service operations, management APIs, and the
-   `require_permission()` dependency (4.4–4.7).
+4. Add repositories (4.4), then service operations, management APIs, and the
+   `require_permission()` dependency (4.5–4.7).
 5. Verify authorization behavior, bootstrap operations, and migration state
    (4.8).
