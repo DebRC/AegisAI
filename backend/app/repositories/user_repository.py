@@ -10,7 +10,7 @@ class UserRepository:
 
     def create(self, user: User) -> User:
         self.db.add(user)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(user)
         return user
 
@@ -23,4 +23,4 @@ class UserRepository:
         return self.db.scalar(stmt)
 
     def update(self):
-        self.db.commit()
+        self.db.flush()

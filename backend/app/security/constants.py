@@ -1,5 +1,9 @@
-ACCESS_TOKEN = "access"
+from enum import Enum
 
-REFRESH_TOKEN = "refresh"
 
-TOKEN_TYPE = "bearer"
+class TokenType(str, Enum):
+    ACCESS = "access"
+    REFRESH = "refresh"
+
+
+TOKEN_SCHEME = "bearer"
