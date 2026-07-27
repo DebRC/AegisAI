@@ -4,7 +4,7 @@ AegisAI is an enterprise-focused Retrieval-Augmented Generation (RAG) platform i
 
 The project is deliberately being built in layers: establish a dependable backend and authentication foundation first, then add RBAC before document ingestion and permission-aware retrieval.
 
-> **Current status:** Phases 1–3 (foundation, database, and JWT authentication) are complete. Phase 4.1 has established the RBAC contract; RBAC implementation is next.
+> **Current status:** Phases 1–3 (foundation, database, and JWT authentication) are complete. Phase 4.1–4.3 established the RBAC contract, schema, and bootstrap data; RBAC repositories and services are next.
 
 ## What is implemented
 
@@ -152,7 +152,7 @@ venv/bin/alembic revision --autogenerate -m "describe the change"
 venv/bin/alembic upgrade head
 ```
 
-The current migration head includes users, refresh tokens, and the `refresh_tokens.revoked_at` column used for logout and token rotation. Review generated migrations for unintended constraints, indexes, or destructive changes before applying them.
+The current migration head includes users, refresh tokens, RBAC tables, the seeded permission catalogue, and the `administrator` system role. Review generated migrations for unintended constraints, indexes, or destructive changes before applying them.
 
 When Alembic runs on the host, use a database URL reachable from the host—normally `localhost`, not the Compose-only hostname `postgres`.
 
@@ -174,6 +174,18 @@ id, token, expires_at, revoked_at, user_id,
 created_at, updated_at
 ```
 
+### Bootstrap the first administrator
+
+After applying migrations and registering the intended administrator account,
+assign the seeded role explicitly:
+
+```bash
+cd backend
+venv/bin/python -m scripts.bootstrap_administrator admin@example.com
+```
+
+The command is idempotent: running it again for the same user makes no change.
+
 ## Roadmap
 
 - [x] Phase 1 — Foundation and containerized services
@@ -181,6 +193,7 @@ created_at, updated_at
 - [x] Phase 3 — Authentication, refresh-token lifecycle, and transaction boundaries
 - [x] Phase 4.1 — RBAC contract and canonical permission catalogue
 - [x] Phase 4.2 — RBAC models and database migration
+- [x] Phase 4.3 — Permission seeding and administrator bootstrap
 - [ ] Phase 4 — RBAC: roles, permissions, assignments, and authorization dependencies
 - [ ] Phase 5 — Enterprise SSO: Google, GitHub, and Microsoft Entra ID
 - [ ] Phase 6 — Document management and ingestion

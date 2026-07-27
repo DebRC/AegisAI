@@ -39,19 +39,23 @@ application values are defined in
 | `roles:manage` | Create, change, or delete roles and role permissions |
 | `roles:assign` | Assign or remove roles for users |
 
-This is a code-level catalogue today. Checkpoint 4.3 will seed the same values
-as database records. A new protected capability must add its permission here,
-seed it through a reviewed migration, and use it in its authorization
-dependency.
+The catalogue is seeded as database records by the Phase 4.3 migration. A new
+protected capability must add its permission here, seed it through a reviewed
+migration, and use it in its authorization dependency.
 
 ## Rules and boundaries
 
 - Permissions are assigned explicitly to roles; no implicit permission is
   granted by a role name.
 - New users receive no privileged role automatically.
-- A seeded administrator role will be created during the bootstrap checkpoint,
-  but assigning it to the first operator will be an explicit, documented
-  administrative action.
+- The seeded `administrator` role receives every canonical permission, but is
+  not assigned automatically. After registering the first operator and applying
+  migrations, run the explicit bootstrap command:
+
+  ```bash
+  cd backend
+  venv/bin/python -m scripts.bootstrap_administrator admin@example.com
+  ```
 - Inactive users must not pass permission checks.
 - Role and permission changes are committed transactionally by the service
   layer, consistent with the authentication implementation.
