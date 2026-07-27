@@ -18,6 +18,10 @@ from app.schemas.user import (
     UserResponse,
 )
 
+from app.schemas.refresh import (
+    RefreshRequest,
+)
+
 from app.services.auth_service import AuthService
 
 from app.core.exceptions import (
@@ -89,21 +93,45 @@ def me(
 
     return current_user
 
+@router.post("/logout")
+def logout(
+    request: RefreshRequest,
+    service: AuthService = Depends(
+        get_auth_service
+    ),
+):
+
+    service.logout(
+        request.refresh_token
+    )
+
+    return {
+        "message":"Logged out"
+    }
+
 @router.post(
     "/refresh",
     response_model=TokenResponse,
 )
-def refresh():
+def refresh(
+    request: RefreshRequest,
+    service: AuthService = Depends(
+        get_auth_service
+    ),
+):
 
-    raise HTTPException(
-        status_code=501,
-        detail="Not implemented yet",
-    )
+    try:
 
-@router.post("/logout")
-def logout():
+        return service.refresh(
+            request.refresh_token
+        )
 
-    raise HTTPException(
-        status_code=501,
-        detail="Not implemented yet",
-    )
+    except AuthenticationError:
+
+        raise HTTPException(
+
+            status_code=401,
+
+            detail="Invalid refresh token",
+
+        )

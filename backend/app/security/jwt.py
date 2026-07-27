@@ -4,11 +4,13 @@ from datetime import timezone
 
 from jose import JWTError
 from jose import jwt
+from jose import ExpiredSignatureError
 
 from app.core.config import settings
 from app.schemas.token import TokenPayload
 from app.security.constants import ACCESS_TOKEN
 from app.security.constants import REFRESH_TOKEN
+from app.core.exceptions import AuthenticationError
 
 def create_access_token(
     user_id: int,
@@ -66,15 +68,31 @@ def decode_token(
     token: str,
 ) -> TokenPayload:
 
-    payload = jwt.decode(
-        token,
-        settings.JWT_SECRET_KEY,
-        algorithms=[
-            settings.JWT_ALGORITHM
-        ],
-    )
+    try:
 
-    return TokenPayload(**payload)
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[
+                settings.JWT_ALGORITHM
+            ],
+        )
+        
+        return TokenPayload(**payload)
+
+    except ExpiredSignatureError:
+
+        raise AuthenticationError(
+            "Refresh token expired"
+        )
+
+    except JWTError:
+
+        raise AuthenticationError(
+            "Invalid token"
+        )
+
+    
 
 def refresh_token_expiry():
 

@@ -1,6 +1,8 @@
 from datetime import datetime
 
+from sqlalchemy import delete
 from sqlalchemy import select
+
 from sqlalchemy.orm import Session
 
 from app.models.refresh_token import RefreshToken
@@ -10,6 +12,36 @@ class RefreshTokenRepository:
 
     def __init__(self, db: Session):
         self.db = db
+        
+    def get_valid_token(
+        self,
+        token: str,
+    ) -> RefreshToken | None:
+
+        stmt = (
+            select(RefreshToken)
+            .where(
+                RefreshToken.token == token
+            )
+        )
+
+        return self.db.scalar(stmt)
+    
+    def delete_by_token(
+        self,
+        token: str,
+    ):
+
+        stmt = (
+            delete(RefreshToken)
+            .where(
+                RefreshToken.token == token
+            )
+        )
+
+        self.db.execute(stmt)
+
+        self.db.commit()
 
     def create(self, refresh_token: RefreshToken) -> RefreshToken:
 
