@@ -45,3 +45,8 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+
+    role_assignments: Mapped[list["UserRole"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )

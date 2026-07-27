@@ -180,6 +180,7 @@ created_at, updated_at
 - [x] Phase 2 — Database layer and Alembic
 - [x] Phase 3 — Authentication, refresh-token lifecycle, and transaction boundaries
 - [x] Phase 4.1 — RBAC contract and canonical permission catalogue
+- [x] Phase 4.2 — RBAC models and database migration
 - [ ] Phase 4 — RBAC: roles, permissions, assignments, and authorization dependencies
 - [ ] Phase 5 — Enterprise SSO: Google, GitHub, and Microsoft Entra ID
 - [ ] Phase 6 — Document management and ingestion
