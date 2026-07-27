@@ -4,7 +4,7 @@ AegisAI is an enterprise-focused Retrieval-Augmented Generation (RAG) platform i
 
 The project is deliberately being built in layers: establish a dependable backend and authentication foundation first, then add RBAC before document ingestion and permission-aware retrieval.
 
-> **Current status:** Phases 1–3 (foundation, database, and JWT authentication) are complete. Phase 4.1–4.5 established the RBAC contract, schema, bootstrap data, repositories, and service operations; RBAC APIs are next.
+> **Current status:** Phases 1–3 (foundation, database, and JWT authentication) are complete. Phase 4.1–4.6 established the RBAC contract, schema, bootstrap data, service, and typed management API; request-time authorization enforcement is next.
 
 ## What is implemented
 
@@ -122,6 +122,18 @@ users ──< user_roles >── roles ──< role_permissions >── permissi
 The access JWT contains identity and token metadata, not a list of permissions. Keeping permissions in PostgreSQL means an administrator can change a user's role or a role's permissions and the next request uses the new policy without waiting for an old JWT to expire. The trade-off is one authorization query per protected, permission-aware request. This is the safer default for enterprise controls; caching can be introduced later only with deliberate invalidation rules.
 
 The seeded `administrator` system role is assigned every permission in the canonical catalogue. It is the initial operational access path, while regular roles and their assignments are managed through the RBAC service and, in the next steps, administrative APIs. The Phase 4.7 permission dependency will compose with the existing `get_current_user` dependency, so routes do not implement JWT or role checks themselves.
+
+### Planned RBAC management API
+
+Phase 4.6 defines the following typed `/rbac` endpoints. They are intentionally not registered with the application until Phase 4.7 protects each operation with its required permission.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/rbac/permissions` | List the seeded permission catalogue |
+| `GET`, `POST` | `/rbac/roles` | List or create roles |
+| `DELETE` | `/rbac/roles/{role_id}` | Delete a non-system role |
+| `GET`, `POST`, `DELETE` | `/rbac/roles/{role_id}/permissions[/{permission_id}]` | View, grant, or revoke role permissions |
+| `GET`, `POST`, `DELETE` | `/rbac/users/{user_id}/roles[/{role_id}]` | View, assign, or remove user roles |
 
 ## Quick start
 
@@ -253,6 +265,7 @@ The command is idempotent: running it again for the same user makes no change.
 - [x] Phase 4.3 — Permission seeding and administrator bootstrap
 - [x] Phase 4.4 — RBAC repositories
 - [x] Phase 4.5 — RBAC service and transaction operations
+- [x] Phase 4.6 — Typed RBAC management API contracts and routes
 - [ ] Phase 4 — RBAC: roles, permissions, assignments, and authorization dependencies
 - [ ] Phase 5 — Enterprise SSO: Google, GitHub, and Microsoft Entra ID
 - [ ] Phase 6 — Document management and ingestion
