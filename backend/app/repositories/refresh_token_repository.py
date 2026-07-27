@@ -1,7 +1,9 @@
 from datetime import datetime
+from datetime import timezone
 
 from sqlalchemy import delete
 from sqlalchemy import select
+from sqlalchemy import update
 
 from sqlalchemy.orm import Session
 
@@ -21,32 +23,34 @@ class RefreshTokenRepository:
         stmt = (
             select(RefreshToken)
             .where(
-                RefreshToken.token == token
+                RefreshToken.token == token,
+                RefreshToken.revoked_at.is_(None),
+                RefreshToken.expires_at > datetime.now(timezone.utc),
             )
         )
 
         return self.db.scalar(stmt)
     
-    def delete_by_token(
+    def revoke_by_token(
         self,
         token: str,
-    ):
+    ) -> None:
 
         stmt = (
-            delete(RefreshToken)
+            update(RefreshToken)
             .where(
-                RefreshToken.token == token
+                RefreshToken.token == token,
+                RefreshToken.revoked_at.is_(None),
             )
+            .values(revoked_at=datetime.now(timezone.utc))
         )
 
         self.db.execute(stmt)
 
-        self.db.commit()
-
     def create(self, refresh_token: RefreshToken) -> RefreshToken:
 
         self.db.add(refresh_token)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(refresh_token)
 
         return refresh_token
@@ -69,7 +73,7 @@ class RefreshTokenRepository:
     ) -> None:
 
         self.db.delete(refresh_token)
-        self.db.commit()
+        self.db.flush()
 
     def delete_expired(
         self,
@@ -88,7 +92,5 @@ class RefreshTokenRepository:
 
         for token in expired:
             self.db.delete(token)
-
-        self.db.commit()
 
         return count

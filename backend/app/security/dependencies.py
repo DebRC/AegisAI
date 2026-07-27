@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.security.jwt import decode_token
+from app.security.constants import TokenType
 from app.db.database import get_db
 from app.repositories.user_repository import UserRepository
 
@@ -21,6 +22,12 @@ def get_current_user(
     try:
 
         payload = decode_token(token)
+
+        if payload.type != TokenType.ACCESS:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+            )
 
         repo = UserRepository(db)
 

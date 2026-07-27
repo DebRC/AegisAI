@@ -10,6 +10,7 @@ from app.repositories.user_repository import UserRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 
 from app.schemas.auth import RegisterRequest
+from app.schemas.token import LoginResponse
 from app.schemas.token import TokenResponse
 
 from app.security.hashing import hash_password
@@ -22,10 +23,8 @@ from app.security.jwt import (
     refresh_token_expiry,
 )
 
-from app.security.constants import (
-    ACCESS_TOKEN,
-    REFRESH_TOKEN,
-)
+from app.security.constants import TokenType
+from app.core.config import settings
 
 from app.core.exceptions import AuthenticationError
 from app.core.exceptions import UserAlreadyExistsError
@@ -41,6 +40,13 @@ class AuthService:
 
         self.users = UserRepository(db)
         self.refresh_tokens = RefreshTokenRepository(db)
+
+    def _commit(self) -> None:
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
 
     def register(
@@ -68,13 +74,16 @@ class AuthService:
 
         )
 
-        return self.users.create(user)
+        self.users.create(user)
+        self._commit()
+
+        return user
 
     def login(
         self,
         email: str,
         password: str,
-    ) -> TokenResponse:
+    ) -> LoginResponse:
 
         user = self.users.get_by_email(
             email
@@ -117,13 +126,17 @@ class AuthService:
             timezone.utc
         )
 
-        self.db.commit()
+        self._commit()
 
-        return TokenResponse(
+        return LoginResponse(
 
             access_token=access,
 
             refresh_token=refresh,
+
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+
+            user=user,
 
         )
 
@@ -132,9 +145,11 @@ class AuthService:
         refresh_token: str,
     ):
 
-        self.refresh_tokens.delete_by_token(
+        self.refresh_tokens.revoke_by_token(
             refresh_token
         )
+
+        self._commit()
 
     def refresh(
         self,
@@ -143,7 +158,7 @@ class AuthService:
 
         payload = decode_token(refresh_token)
 
-        if payload.type != REFRESH_TOKEN:
+        if payload.type != TokenType.REFRESH:
 
             raise AuthenticationError(
                 "Invalid refresh token"
@@ -170,7 +185,7 @@ class AuthService:
                 "User not found"
             )
 
-        self.refresh_tokens.delete_by_token(
+        self.refresh_tokens.revoke_by_token(
             refresh_token
         )
 
@@ -195,11 +210,15 @@ class AuthService:
             )
         )
 
+        self._commit()
+
         return TokenResponse(
 
             access_token=access,
 
             refresh_token=new_refresh,
+
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
 
         )
         
@@ -207,8 +226,12 @@ class AuthService:
         self,
     ):
 
-        return self.refresh_tokens.delete_expired(
+        deleted_count = self.refresh_tokens.delete_expired(
             datetime.now(
                 timezone.utc
             )
         )
+
+        self._commit()
+
+        return deleted_count

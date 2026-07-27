@@ -25,6 +25,11 @@ class RefreshToken(Base):
         nullable=False,
     )
 
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"),
         nullable=False,

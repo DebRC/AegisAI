@@ -11,6 +11,7 @@ from app.schemas.auth import (
 )
 
 from app.schemas.token import (
+    LoginResponse,
     TokenResponse,
 )
 
@@ -61,7 +62,7 @@ def register(
 
 @router.post(
     "/login",
-    response_model=TokenResponse,
+    response_model=LoginResponse,
 )
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
