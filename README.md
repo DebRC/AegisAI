@@ -145,6 +145,33 @@ The access JWT contains identity and token metadata, not a list of permissions. 
 
 The seeded `administrator` system role is assigned every permission in the canonical catalogue. It is the initial operational access path, while regular roles and their assignments are managed through protected administrative APIs. `require_permission()` composes with `get_current_user`, so routes declare their required permission instead of implementing JWT or role checks themselves.
 
+### Enterprise SSO configuration (Phase 5.1)
+
+SSO is an additional authentication method. Email/password login remains available, and a successful SSO login will eventually create the same local access and refresh token pair described above. Roles and permissions remain attached to the local AegisAI user, not to provider-specific claims.
+
+SSO is disabled by default. Copy the values from `backend/.env.example` into `backend/.env`, then set `SSO_ENABLED=true` only after configuring at least one provider application. Keep provider secrets and `SSO_STATE_SECRET_KEY` out of version control.
+
+| Setting | Purpose |
+| --- | --- |
+| `SSO_CALLBACK_BASE_URL` | Public base URL of this API. In production this must be an HTTPS address reachable by the identity provider. |
+| `SSO_STATE_SECRET_KEY` | A distinct, long random secret used to sign temporary OAuth state. It is separate from the JWT signing secret to limit blast radius. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Credentials for a Google OpenID Connect web application. |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Credentials for a GitHub OAuth application. |
+| `MICROSOFT_ENTRA_CLIENT_ID`, `MICROSOFT_ENTRA_CLIENT_SECRET` | Credentials for a Microsoft Entra ID OpenID Connect application. |
+| `MICROSOFT_ENTRA_TENANT_ID` | Entra directory ID, or `organizations` while intentionally allowing organizational accounts from multiple tenants. |
+
+Phase 5 will register one redirect URI per provider, all handled by AegisAI:
+
+```text
+{SSO_CALLBACK_BASE_URL}/auth/sso/google/callback
+{SSO_CALLBACK_BASE_URL}/auth/sso/github/callback
+{SSO_CALLBACK_BASE_URL}/auth/sso/microsoft/callback
+```
+
+For production, do not use the localhost example URLs. Register the exact HTTPS callback URLs with each provider; OAuth providers reject redirect URIs that do not match exactly. Use a tenant-specific Entra ID value whenever AegisAI is intended for one organization, rather than accepting identities from every organization.
+
+The upcoming callback flow will use short-lived, signed `state` values to bind the callback to the login request, PKCE to protect authorization-code exchange, and `nonce` validation for OpenID Connect ID tokens. Google and Entra ID supply OpenID Connect identity tokens; GitHub's OAuth flow will retrieve the authenticated profile and verified email through GitHub's API. Provider access tokens will be used only for this exchange and profile lookup, never returned as AegisAI session tokens or stored as a substitute for local authorization.
+
 ### RBAC management API
 
 The following typed `/rbac` endpoints are registered. Each requires a bearer access token, an active user, and the indicated database-backed permission.
