@@ -1,6 +1,7 @@
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
+from uuid import uuid4
 
 from jose import JWTError
 from jose import jwt
@@ -24,6 +25,7 @@ def create_token(
         "sub": str(user_id),
         "type": token_type,
         "exp": expire,
+        "jti": str(uuid4()),
     }
 
     return jwt.encode(
