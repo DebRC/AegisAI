@@ -20,6 +20,8 @@ from app.schemas.rbac import RolePermissionResponse
 from app.schemas.rbac import RoleResponse
 from app.schemas.rbac import UserRoleResponse
 from app.services.rbac_service import RbacService
+from app.security.dependencies import require_permission
+from app.security.permissions import PermissionCode
 
 
 router = APIRouter(prefix="/rbac", tags=["RBAC"])
@@ -83,14 +85,22 @@ def _service_error_to_http_exception(error: Exception) -> HTTPException:
     raise error
 
 
-@router.get("/permissions", response_model=list[PermissionResponse])
+@router.get(
+    "/permissions",
+    response_model=list[PermissionResponse],
+    dependencies=[Depends(require_permission(PermissionCode.ROLES_READ))],
+)
 def list_permissions(
     service: RbacService = Depends(get_rbac_service),
 ):
     return service.list_permissions()
 
 
-@router.get("/roles", response_model=list[RoleResponse])
+@router.get(
+    "/roles",
+    response_model=list[RoleResponse],
+    dependencies=[Depends(require_permission(PermissionCode.ROLES_READ))],
+)
 def list_roles(
     service: RbacService = Depends(get_rbac_service),
 ):
@@ -101,6 +111,7 @@ def list_roles(
     "/roles",
     response_model=RoleResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission(PermissionCode.ROLES_MANAGE))],
 )
 def create_role(
     request: RoleCreateRequest,
@@ -112,7 +123,11 @@ def create_role(
         raise _service_error_to_http_exception(error) from error
 
 
-@router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/roles/{role_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission(PermissionCode.ROLES_MANAGE))],
+)
 def delete_role(
     role_id: int,
     service: RbacService = Depends(get_rbac_service),
@@ -128,6 +143,7 @@ def delete_role(
 @router.get(
     "/roles/{role_id}/permissions",
     response_model=list[RolePermissionResponse],
+    dependencies=[Depends(require_permission(PermissionCode.ROLES_READ))],
 )
 def list_role_permissions(
     role_id: int,
@@ -143,6 +159,7 @@ def list_role_permissions(
     "/roles/{role_id}/permissions/{permission_id}",
     response_model=RolePermissionResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission(PermissionCode.ROLES_MANAGE))],
 )
 def grant_role_permission(
     role_id: int,
@@ -162,6 +179,7 @@ def grant_role_permission(
 @router.delete(
     "/roles/{role_id}/permissions/{permission_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission(PermissionCode.ROLES_MANAGE))],
 )
 def revoke_role_permission(
     role_id: int,
@@ -179,6 +197,7 @@ def revoke_role_permission(
 @router.get(
     "/users/{user_id}/roles",
     response_model=list[UserRoleResponse],
+    dependencies=[Depends(require_permission(PermissionCode.USERS_READ))],
 )
 def list_user_roles(
     user_id: int,
@@ -194,6 +213,7 @@ def list_user_roles(
     "/users/{user_id}/roles/{role_id}",
     response_model=UserRoleResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission(PermissionCode.ROLES_ASSIGN))],
 )
 def assign_user_role(
     user_id: int,
@@ -213,6 +233,7 @@ def assign_user_role(
 @router.delete(
     "/users/{user_id}/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission(PermissionCode.ROLES_ASSIGN))],
 )
 def remove_user_role(
     user_id: int,

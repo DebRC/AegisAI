@@ -80,5 +80,7 @@ The following remain out of scope until later phases:
 5. Define typed management APIs (4.6), without registering them until their
    authorization guard is ready.
 6. Add the `require_permission()` dependency and register the APIs (4.7).
+   The dependency requires a valid access token, an active user, and the
+   database-backed permission assigned through one of that user's roles.
 7. Verify authorization behavior, bootstrap operations, and migration state
    (4.8).
