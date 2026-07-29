@@ -66,6 +66,28 @@ backend/
 
 This will remain layered until RBAC and SSO introduce enough domains to justify a vertical-slice refactor.
 
+### Container startup architecture
+
+```text
+docker compose up --build --force-recreate
+                    │
+                    ▼
+          PostgreSQL health check passes
+                    │
+                    ▼
+      backend/scripts/start_backend.sh
+        ├── run unit tests
+        ├── alembic upgrade head
+        └── exec Uvicorn (FastAPI API)
+                    │
+                    ▼
+       API :8000  •  PostgreSQL :5432  •  Qdrant :6333
+```
+
+The backend does not start when the tests or database migration fail. PostgreSQL
+is persistent in the `postgres_data` Docker volume; Qdrant persists data in
+`qdrant_data`.
+
 ### Authentication and authorization architecture
 
 Authentication answers **who is making this request?** Authorization answers **may that authenticated user perform this action?** They are separate checks that happen in order:
@@ -138,6 +160,33 @@ The following typed `/rbac` endpoints are registered. Each requires a bearer acc
 | `GET` | `/rbac/users/{user_id}/roles` | `users:read` | View user roles |
 | `POST`, `DELETE` | `/rbac/users/{user_id}/roles/{role_id}` | `roles:assign` | Assign or remove a user role |
 
+## Testing
+
+Run the complete Phase 1–4 unit-test suite from `backend/`:
+
+```bash
+venv/bin/python -m unittest discover -s tests -v
+```
+
+The suite uses mocks for HTTP handlers and an isolated in-memory SQLite database
+for service and repository behavior. It covers authentication, JWT handling,
+refresh-token rotation, RBAC authorization, repositories, schemas, bootstrap
+operations, dependencies, API handlers, and application startup.
+
+The backend Dockerfile runs this same command during `docker compose build
+backend`, then generates the complete Alembic upgrade SQL offline. A failing
+unit test or invalid migration fails the image build. The build uses temporary
+test settings only for those steps; runtime configuration still comes from
+Compose and `backend/.env` is excluded from the image context.
+
+Compose also runs the tests again, applies Alembic migrations to PostgreSQL,
+and only then starts Uvicorn. Use this single command to force that complete
+startup sequence even when Docker reuses cached image layers:
+
+```bash
+docker compose up --build --force-recreate
+```
+
 ### RBAC verification
 
 Run the dependency-free RBAC test suite from `backend/`:
@@ -162,40 +211,65 @@ docker compose exec backend python -m scripts.bootstrap_administrator admin@exam
 
 Run the bootstrap command again to confirm it makes no duplicate assignment.
 
-## Quick start
+## Run the entire project
 
-### Prerequisites
+### One-time setup
 
-- Docker and Docker Compose
-- Python 3.12+ for local development
-
-### Configure the environment
+Install Docker with Docker Compose, then create your local configuration:
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-Set a long, unique `JWT_SECRET_KEY` before using the application outside local development. The example database URL uses the Docker service hostname (`postgres`).
+Set a long, unique `JWT_SECRET_KEY` in `backend/.env` before using the
+application outside local development. Keep the example `DATABASE_URL` hostname
+as `postgres`: it is the database service name used inside Compose.
 
-### Start the stack
+### Start everything
 
 ```bash
-docker compose up --build
+docker compose up --build --force-recreate
 ```
 
-The stack exposes:
+This single command:
+
+1. Builds the backend image.
+2. Runs all unit tests; it stops if any test fails.
+3. Waits for PostgreSQL to be healthy.
+4. Applies `alembic upgrade head` to PostgreSQL.
+5. Starts the FastAPI backend, PostgreSQL, and Qdrant services.
+
+When startup completes, open:
 
 - API: `http://localhost:8000`
+- Interactive API documentation: `http://localhost:8000/docs`
 - PostgreSQL: `localhost:5432`
 - Qdrant: `http://localhost:6333`
 
-Apply migrations from the backend container after it starts:
+Stop the stack with:
 
 ```bash
-docker compose exec backend alembic upgrade head
+docker compose down
 ```
 
-For local, non-containerized development, run backend commands from `backend/` so `app` is importable:
+### Everyday Compose operations
+
+```bash
+# Follow backend startup or request logs
+docker compose logs -f backend
+
+# Re-run the full build, test, migration, and startup sequence
+docker compose up --build --force-recreate
+
+# Check running services
+docker compose ps
+```
+
+### Local Python development
+
+Docker is sufficient to run the entire project. Python 3.12+ is only required
+when running the backend without Docker. Run local backend commands from
+`backend/` so `app` is importable:
 
 ```bash
 cd backend
@@ -276,8 +350,7 @@ After applying migrations and registering the intended administrator account,
 assign the seeded role explicitly:
 
 ```bash
-cd backend
-venv/bin/python -m scripts.bootstrap_administrator admin@example.com
+docker compose exec backend python -m scripts.bootstrap_administrator admin@example.com
 ```
 
 The command is idempotent: running it again for the same user makes no change.
@@ -287,14 +360,6 @@ The command is idempotent: running it again for the same user makes no change.
 - [x] Phase 1 — Foundation and containerized services
 - [x] Phase 2 — Database layer and Alembic
 - [x] Phase 3 — Authentication, refresh-token lifecycle, and transaction boundaries
-- [x] Phase 4.1 — RBAC contract and canonical permission catalogue
-- [x] Phase 4.2 — RBAC models and database migration
-- [x] Phase 4.3 — Permission seeding and administrator bootstrap
-- [x] Phase 4.4 — RBAC repositories
-- [x] Phase 4.5 — RBAC service and transaction operations
-- [x] Phase 4.6 — Typed RBAC management API contracts and routes
-- [x] Phase 4.7 — Permission dependency and protected RBAC APIs
-- [x] Phase 4.8 — RBAC verification and operational checks
 - [x] Phase 4 — RBAC: roles, permissions, assignments, and authorization dependencies
 - [ ] Phase 5 — Enterprise SSO: Google, GitHub, and Microsoft Entra ID
 - [ ] Phase 6 — Document management and ingestion

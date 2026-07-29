@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.models
 from app.core.exceptions import RoleAlreadyExistsError
+from app.core.exceptions import RoleNotFoundError
 from app.core.exceptions import SystemRoleModificationError
 from app.db.base import Base
 from app.models import Permission
@@ -98,6 +99,31 @@ class RbacServiceTests(unittest.TestCase):
 
         with self.assertRaises(RoleAlreadyExistsError):
             self.service.create_role("analyst", "Duplicate")
+
+    def test_role_and_assignment_read_remove_and_delete_operations(self) -> None:
+        role = self.service.create_role("analyst", "Read documents")
+        permission_id = self._permission_id(PermissionCode.DOCUMENTS_READ)
+
+        self.assertEqual(self.service.get_role(role.id).id, role.id)
+        self.assertEqual([item.id for item in self.service.list_roles()], [role.id])
+        self.assertEqual(len(self.service.list_permissions()), len(PermissionCode))
+        self.assertEqual(self.service.list_role_permissions(role.id), [])
+
+        self.service.grant_permission(role.id, permission_id)
+        self.assertEqual(
+            self.service.list_role_permissions(role.id)[0].permission_id,
+            permission_id,
+        )
+
+        self.service.assign_role(self.user.id, role.id)
+        self.assertEqual(self.service.list_user_roles(self.user.id)[0].role_id, role.id)
+
+        self.service.remove_role(self.user.id, role.id)
+        self.assertEqual(self.service.list_user_roles(self.user.id), [])
+
+        self.service.delete_role(role.id)
+        with self.assertRaises(RoleNotFoundError):
+            self.service.get_role(role.id)
 
     def test_system_role_cannot_be_deleted(self) -> None:
         system_role = Role(
