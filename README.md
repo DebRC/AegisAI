@@ -172,6 +172,18 @@ For production, do not use the localhost example URLs. Register the exact HTTPS 
 
 The upcoming callback flow will use short-lived, signed `state` values to bind the callback to the login request, PKCE to protect authorization-code exchange, and `nonce` validation for OpenID Connect ID tokens. Google and Entra ID supply OpenID Connect identity tokens; GitHub's OAuth flow will retrieve the authenticated profile and verified email through GitHub's API. Provider access tokens will be used only for this exchange and profile lookup, never returned as AegisAI session tokens or stored as a substitute for local authorization.
 
+### SSO provider integration (Phase 5.3)
+
+Provider-specific protocol work is isolated in `backend/app/integrations/sso/`. Future HTTP routes will call a provider adapter and receive one `ProviderIdentity` result: provider name, immutable provider subject, optional email, email-verification status, and optional display name. This prevents provider JSON shapes and endpoint URLs from leaking into API routes or the local-user service.
+
+| Provider | Authentication protocol | Requested scopes | Identity source |
+| --- | --- | --- | --- |
+| Google | OpenID Connect authorization code + PKCE | `openid email profile` | Validated ID-token claims |
+| GitHub | OAuth authorization code + PKCE | `read:user user:email` | `/user` plus primary verified `/user/emails` result |
+| Microsoft Entra ID | OpenID Connect authorization code + PKCE | `openid email profile` | Validated ID-token claims |
+
+For Google and Entra, the adapter loads OIDC discovery metadata, retrieves the matching JWKS signing key, and validates the ID token's RS256 signature, issuer, audience, expiry, and expected nonce before using its claims. Entra validates the token tenant and issuer explicitly, including when `organizations` deliberately permits more than one Entra tenant. Entra does not provide a universal `email_verified` claim, so its email metadata is not treated as verified for automatic account linking. GitHub's stable numeric account ID—not its login or email—is converted to the stored provider subject.
+
 ### External identities (Phase 5.2)
 
 The `external_identities` table links one local `users` row to an identity at an external provider:

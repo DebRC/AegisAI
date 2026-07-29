@@ -2,6 +2,14 @@ class AuthenticationError(Exception):
     """Raised when authentication fails."""
 
 
+class SsoProviderConfigurationError(Exception):
+    """Raised when an SSO provider has incomplete configuration."""
+
+
+class SsoProviderError(Exception):
+    """Raised when an external SSO provider rejects or cannot complete a flow."""
+
+
 class UserAlreadyExistsError(Exception):
     """Raised when a user with the given email already exists."""
 
