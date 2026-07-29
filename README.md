@@ -4,7 +4,7 @@ AegisAI is an enterprise-focused Retrieval-Augmented Generation (RAG) platform i
 
 The project is deliberately being built in layers: establish a dependable backend and authentication foundation first, then add RBAC before document ingestion and permission-aware retrieval.
 
-> **Current status:** Phases 1–3 (foundation, database, and JWT authentication) are complete. Phase 4.1–4.7 established database-backed RBAC, management APIs, and request-time authorization enforcement.
+> **Current status:** Phases 1–4 (foundation, database, JWT authentication, and RBAC) are complete. Phase 4 established database-backed roles, permissions, management APIs, request-time authorization enforcement, and operational verification.
 
 ## What is implemented
 
@@ -138,6 +138,30 @@ The following typed `/rbac` endpoints are registered. Each requires a bearer acc
 | `GET` | `/rbac/users/{user_id}/roles` | `users:read` | View user roles |
 | `POST`, `DELETE` | `/rbac/users/{user_id}/roles/{role_id}` | `roles:assign` | Assign or remove a user role |
 
+### RBAC verification
+
+Run the dependency-free RBAC test suite from `backend/`:
+
+```bash
+venv/bin/python -m unittest discover -s tests -v
+```
+
+The tests use an isolated in-memory SQLite database. They verify that a user is
+authorized only after both the role assignment and role-permission grant exist,
+that revocation takes effect immediately, and that duplicate roles, system-role
+deletion, inactive users, and missing permissions are rejected.
+
+For the real PostgreSQL migration and seeded administrator role, run the
+following in the Compose environment after registering an operator:
+
+```bash
+docker compose exec backend alembic upgrade head
+docker compose exec backend alembic current
+docker compose exec backend python -m scripts.bootstrap_administrator admin@example.com
+```
+
+Run the bootstrap command again to confirm it makes no duplicate assignment.
+
 ## Quick start
 
 ### Prerequisites
@@ -270,7 +294,8 @@ The command is idempotent: running it again for the same user makes no change.
 - [x] Phase 4.5 — RBAC service and transaction operations
 - [x] Phase 4.6 — Typed RBAC management API contracts and routes
 - [x] Phase 4.7 — Permission dependency and protected RBAC APIs
-- [ ] Phase 4 — RBAC: roles, permissions, assignments, and authorization dependencies
+- [x] Phase 4.8 — RBAC verification and operational checks
+- [x] Phase 4 — RBAC: roles, permissions, assignments, and authorization dependencies
 - [ ] Phase 5 — Enterprise SSO: Google, GitHub, and Microsoft Entra ID
 - [ ] Phase 6 — Document management and ingestion
 - [ ] Phase 7 — Background processing with Redis/Celery

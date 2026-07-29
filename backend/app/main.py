@@ -1,7 +1,8 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 try:
-    import app.models as models
     from app.api.health import router as health_router
     from app.api.database import router as database_router
     from app.api.protected import router as protected_router
@@ -12,7 +13,6 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name != "app":
         raise
-    import models
     from api.health import router as health_router
     from api.database import router as database_router
     from app.api.protected import router as protected_router
@@ -21,9 +21,16 @@ except ModuleNotFoundError as exc:
     from core.config import settings
     from core.logging import logger
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting AegisAI...")
+    yield
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
+    lifespan=lifespan,
 )
 
 app.include_router(health_router)
@@ -31,12 +38,6 @@ app.include_router(database_router)
 app.include_router(protected_router)
 app.include_router(auth_router)
 app.include_router(rbac_router)
-
-@app.lifespan("startup")
-def startup():
-
-    logger.info("Starting AegisAI...")
-
 
 @app.get("/")
 def root():

@@ -70,6 +70,30 @@ The following remain out of scope until later phases:
 - Tenant-scoped roles or permissions
 - Audit-log event publishing
 
+## Verification
+
+Run the RBAC unit tests from `backend/`:
+
+```bash
+venv/bin/python -m unittest discover -s tests -v
+```
+
+They use an isolated in-memory SQLite database to verify the role-to-permission
+join, assignment and revocation behavior, duplicate-role protection, system-role
+protection, inactive-user rejection, and `403` permission denial.
+
+Before treating an environment as ready, also verify the real PostgreSQL state
+inside Compose:
+
+```bash
+docker compose exec backend alembic upgrade head
+docker compose exec backend alembic current
+docker compose exec backend python -m scripts.bootstrap_administrator admin@example.com
+```
+
+The final command must target a previously registered operator. Run it a second
+time to confirm that administrator assignment is idempotent.
+
 ## Implementation sequence
 
 1. Define this contract and the permission catalogue (4.1).
