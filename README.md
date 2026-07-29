@@ -172,6 +172,20 @@ For production, do not use the localhost example URLs. Register the exact HTTPS 
 
 The upcoming callback flow will use short-lived, signed `state` values to bind the callback to the login request, PKCE to protect authorization-code exchange, and `nonce` validation for OpenID Connect ID tokens. Google and Entra ID supply OpenID Connect identity tokens; GitHub's OAuth flow will retrieve the authenticated profile and verified email through GitHub's API. Provider access tokens will be used only for this exchange and profile lookup, never returned as AegisAI session tokens or stored as a substitute for local authorization.
 
+### External identities (Phase 5.2)
+
+The `external_identities` table links one local `users` row to an identity at an external provider:
+
+```text
+users 1 ───< external_identities
+                provider              google | github | microsoft
+                provider_subject      provider's stable account identifier
+                provider_email        optional profile metadata
+                email_verified        whether the provider confirmed that email
+```
+
+`(provider, provider_subject)` is unique across the whole database. This is the authoritative account-binding rule: the same Google, GitHub, or Entra account cannot sign in as two different AegisAI users. Provider email is deliberately not unique because it can change and is not always available. A local user may link identities from more than one provider; deleting the local user cascades to its identity links.
+
 ### RBAC management API
 
 The following typed `/rbac` endpoints are registered. Each requires a bearer access token, an active user, and the indicated database-backed permission.

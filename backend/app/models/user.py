@@ -46,6 +46,11 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
+    external_identities: Mapped[list["ExternalIdentity"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
     role_assignments: Mapped[list["UserRole"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
