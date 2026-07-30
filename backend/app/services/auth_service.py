@@ -103,6 +103,16 @@ class AuthService:
 
             raise AuthenticationError()
 
+        return self.issue_session(user)
+
+    def issue_session(
+        self,
+        user: User,
+    ) -> LoginResponse:
+        """Issue a local session after any trusted authentication method."""
+        if not user.is_active:
+            raise AuthenticationError("Inactive user")
+
         access = create_access_token(
             user.id
         )
@@ -183,6 +193,17 @@ class AuthService:
 
             raise AuthenticationError(
                 "User not found"
+            )
+
+        if not user.is_active:
+
+            self.refresh_tokens.revoke_by_token(
+                refresh_token
+            )
+            self._commit()
+
+            raise AuthenticationError(
+                "Inactive user"
             )
 
         self.refresh_tokens.revoke_by_token(

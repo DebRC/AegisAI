@@ -81,3 +81,25 @@ class AuthServiceTests(DatabaseTestCase, unittest.TestCase):
 
         self.assertEqual(self.service.cleanup_expired_tokens(), 1)
         self.assertIsNone(RefreshTokenRepository(self.session).get_by_token("expired-token"))
+
+    def test_inactive_users_cannot_create_or_refresh_sessions(self) -> None:
+        user = self.service.register(
+            RegisterRequest(
+                email="person@example.com",
+                full_name="Test Person",
+                password="strong-password",
+            )
+        )
+        session = self.service.issue_session(user)
+        user.is_active = False
+        self.session.commit()
+
+        with self.assertRaises(AuthenticationError):
+            self.service.login(user.email, "strong-password")
+        with self.assertRaises(AuthenticationError):
+            self.service.issue_session(user)
+        with self.assertRaises(AuthenticationError):
+            self.service.refresh(session.refresh_token)
+
+        stored = RefreshTokenRepository(self.session).get_by_token(session.refresh_token)
+        self.assertIsNotNone(stored.revoked_at)

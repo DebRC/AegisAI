@@ -14,6 +14,7 @@ from app.api import protected as protected_api
 from app.api import rbac as rbac_api
 from app.api.dependencies import get_auth_service
 from app.api.dependencies import get_rbac_service
+from app.api.dependencies import get_sso_account_service
 from app.core.exceptions import AuthenticationError
 from app.core.exceptions import RoleAlreadyExistsError
 from app.core.exceptions import RoleNotFoundError
@@ -29,6 +30,7 @@ from app.security.constants import TokenType
 from app.security.permissions import PermissionCode
 from app.services.auth_service import AuthService
 from app.services.rbac_service import RbacService
+from app.services.sso_account_service import SsoAccountService
 
 
 class ApplicationTests(unittest.TestCase):
@@ -48,6 +50,7 @@ class ApplicationTests(unittest.TestCase):
 
         self.assertIsInstance(get_auth_service(session), AuthService)
         self.assertIsInstance(get_rbac_service(session), RbacService)
+        self.assertIsInstance(get_sso_account_service(session), SsoAccountService)
 
     def test_current_user_and_permission_dependencies(self) -> None:
         active_user = SimpleNamespace(id=5, is_active=True)
@@ -62,6 +65,28 @@ class ApplicationTests(unittest.TestCase):
             return_value=SimpleNamespace(get_by_id=lambda _: active_user),
         ):
             self.assertIs(dependencies.get_current_user("token", Mock()), active_user)
+
+        with patch.object(
+            dependencies,
+            "decode_token",
+            return_value=SimpleNamespace(type=TokenType.ACCESS, sub=5),
+        ), patch.object(
+            dependencies,
+            "UserRepository",
+            return_value=SimpleNamespace(get_by_id=lambda _: active_user),
+        ):
+            self.assertIs(
+                dependencies.get_current_user(
+                    None,
+                    Mock(),
+                    SimpleNamespace(credentials="bearer-token"),
+                ),
+                active_user,
+            )
+
+        with self.assertRaises(HTTPException) as context:
+            dependencies.get_current_user(None, Mock(), None)
+        self.assertEqual(context.exception.status_code, 401)
 
         with patch.object(
             dependencies,
@@ -85,6 +110,20 @@ class ApplicationTests(unittest.TestCase):
         allowed_database.scalar.return_value = 1
         guard = dependencies.require_permission(PermissionCode.ROLES_READ)
         self.assertIs(guard(active_user, allowed_database), active_user)
+
+    def test_openapi_exposes_password_and_pasteable_bearer_schemes(self) -> None:
+        openapi = app.openapi()
+        schemes = openapi["components"]["securitySchemes"]
+        self.assertEqual(
+            schemes["OAuth2PasswordBearer"]["flows"]["password"]["tokenUrl"],
+            "/auth/login",
+        )
+        self.assertEqual(schemes["AegisAI access token"]["type"], "http")
+        self.assertEqual(schemes["AegisAI access token"]["scheme"], "bearer")
+
+        security = openapi["paths"]["/auth/me"]["get"]["security"]
+        self.assertIn({"OAuth2PasswordBearer": []}, security)
+        self.assertIn({"AegisAI access token": []}, security)
 
     def test_basic_routes_and_lifespan(self) -> None:
         self.assertEqual(health_api.health(), {"status": "healthy"})

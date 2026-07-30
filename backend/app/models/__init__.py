@@ -1,3 +1,4 @@
+from app.models.external_identity import ExternalIdentity
 from app.models.user import User
 from app.models.refresh_token import RefreshToken
 from app.models.permission import Permission
@@ -7,6 +8,7 @@ from app.models.user_role import UserRole
 
 __all__ = [
     "User",
+    "ExternalIdentity",
     "RefreshToken",
     "Permission",
     "Role",

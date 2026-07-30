@@ -3,11 +3,15 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 
+from sqlalchemy.exc import IntegrityError
+
+from app.models import ExternalIdentity
 from app.models import RefreshToken
 from app.models import Role
 from app.models import RolePermission
 from app.models import UserRole
 from app.repositories.permission_repository import PermissionRepository
+from app.repositories.external_identity_repository import ExternalIdentityRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.role_permission_repository import RolePermissionRepository
 from app.repositories.role_repository import RoleRepository
@@ -71,6 +75,52 @@ class RepositoryTests(DatabaseTestCase, unittest.TestCase):
         repository.delete(valid)
         self.session.commit()
         self.assertIsNone(repository.get_by_token(valid.token))
+
+    def test_external_identity_repository_enforces_provider_subject_uniqueness(
+        self,
+    ) -> None:
+        repository = ExternalIdentityRepository(self.session)
+        identity = repository.create(
+            ExternalIdentity(
+                provider="google",
+                provider_subject="google-subject-123",
+                provider_email="user@example.com",
+                email_verified=True,
+                user_id=self.user.id,
+            )
+        )
+        self.session.commit()
+
+        self.assertEqual(
+            repository.get_by_provider_and_subject("google", "google-subject-123").id,
+            identity.id,
+        )
+        self.assertEqual(repository.list_by_user_id(self.user.id), [identity])
+        self.assertIsNone(
+            repository.get_by_provider_and_subject("github", "google-subject-123")
+        )
+
+        identity.provider_email = "updated@example.com"
+        repository.update()
+        self.session.commit()
+        self.assertEqual(
+            repository.get_by_provider_and_subject(
+                "google",
+                "google-subject-123",
+            ).provider_email,
+            "updated@example.com",
+        )
+
+        self.session.add(
+            ExternalIdentity(
+                provider="google",
+                provider_subject="google-subject-123",
+                user_id=self.user.id,
+            )
+        )
+        with self.assertRaises(IntegrityError):
+            self.session.flush()
+        self.session.rollback()
 
     def test_role_repository_create_get_list_and_delete(self) -> None:
         repository = RoleRepository(self.session)

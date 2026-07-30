@@ -1,387 +1,391 @@
 # AegisAI
 
-AegisAI is an enterprise-focused Retrieval-Augmented Generation (RAG) platform in development. Its goal is to let organizations securely ingest, search, and chat with internal knowledge while enforcing authentication, authorization, and—later—tenant boundaries.
+AegisAI is a secure, enterprise-oriented knowledge platform in development. It is being built to let organizations ingest internal content, retrieve it safely, and eventually chat with it through a permission-aware RAG experience.
 
-The project is deliberately being built in layers: establish a dependable backend and authentication foundation first, then add RBAC before document ingestion and permission-aware retrieval.
+The backend foundation is complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, and enterprise SSO. Document ingestion, embeddings, retrieval, and chat are planned next.
 
-> **Current status:** Phases 1–4 (foundation, database, JWT authentication, and RBAC) are complete. Phase 4 established database-backed roles, permissions, management APIs, request-time authorization enforcement, and operational verification.
+## Overview
 
-## What is implemented
+### What is available now
 
-- FastAPI application with OpenAPI/Swagger documentation
-- PostgreSQL, SQLAlchemy 2.x, and Alembic migrations
-- Docker Compose services for the API, PostgreSQL 16, and Qdrant
-- Environment-based configuration with Pydantic Settings
-- Health and database-health endpoints
-- User registration and bcrypt password hashing
-- JWT access and refresh tokens
-- Refresh-token persistence, rotation, expiry checks, and soft revocation
-- Protected endpoints that accept access tokens only
-- Service-owned database transactions, so related writes commit or roll back together
+| Capability | Status | Outcome |
+| --- | --- | --- |
+| API and local platform | Available | FastAPI API, PostgreSQL 16, Qdrant, Docker Compose, health checks, and Alembic migrations. |
+| Local authentication | Available | User registration, bcrypt password hashing, short-lived access JWTs, rotatable refresh tokens, logout, and inactive-user protection. |
+| Authorization | Available | Local roles and permissions, administrator bootstrap, and request-time RBAC enforcement. |
+| Enterprise SSO | Available | Google OpenID Connect, GitHub OAuth, and Microsoft Entra ID adapters with PKCE, signed state, nonce validation, account linking, and local AegisAI sessions. |
+| Knowledge pipeline | Planned | Document ingestion, background processing, extraction, chunking, embeddings, Qdrant indexing, retrieval, and RAG chat. |
 
-Qdrant is provisioned as infrastructure, but document ingestion, embeddings, and RAG retrieval have not yet been implemented.
+Qdrant is already provisioned as local infrastructure, but AegisAI does not yet store documents or vectors in it.
 
-## Technology
+### Technology
 
 | Area | Technology |
 | --- | --- |
-| API | FastAPI, Uvicorn |
-| Data layer | SQLAlchemy 2.x, Alembic |
+| API | FastAPI and Uvicorn |
+| Application and data layer | Python 3.12, SQLAlchemy 2.x, Alembic |
 | Relational database | PostgreSQL 16 |
 | Vector database | Qdrant |
-| Validation and configuration | Pydantic v2, Pydantic Settings |
-| Authentication | Passlib/bcrypt, python-jose JWT |
-| Containers | Docker and Docker Compose |
+| Identity and authorization | Passlib/bcrypt, python-jose JWT, local RBAC, OAuth 2.0/OpenID Connect adapters |
+| Configuration and validation | Pydantic v2 and Pydantic Settings |
+| Local platform | Docker and Docker Compose |
+
+### Delivery progress
+
+| Milestone | Status | Delivered or planned outcome |
+| --- | --- | --- |
+| Phases 1–5 — Foundation, data, identity, and access control | Complete | Containerized backend, migrations, local authentication, RBAC, and enterprise SSO. |
+| Phases 6–8 — Knowledge ingestion | Planned | Document management, asynchronous processing, text extraction, and chunking. |
+| Phases 9–12 — Retrieval and RAG | Planned | Embeddings, vector indexing, metadata filtering, streaming chat, citations, and permission-aware retrieval. |
+| Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
+| Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
 
 ## Architecture
 
-The backend currently uses a layered architecture:
+### Runtime architecture
 
 ```text
-HTTP API → service → repository → PostgreSQL
-                 ↓
-          security and schemas
+                                  Available now
+
+ Browser, CLI, or future frontend
+              │
+              ▼
+        FastAPI API :8000
+              │
+    ┌─────────┼───────────────────────────────────────────────┐
+    │         │                                               │
+    ▼         ▼                                               ▼
+Local login  Enterprise SSO                              Protected route
+or refresh   Google | GitHub | Entra                         dependency
+    │         │                                               │
+    └────┬────┘                                               ▼
+         ▼                                      authenticate access JWT
+  AuthService / SsoAccountService                            │
+         │                                                    ▼
+         ▼                                        evaluate local RBAC policy
+  AegisAI access + refresh tokens                            │
+         │                                                    ▼
+         └───────────────► PostgreSQL ◄──────────── allow or deny request
+                             users
+                             refresh_tokens
+                             external_identities
+                             roles / permissions
+
+                                  Planned next
+
+ Documents ──► workers ──► extraction/chunking ──► embeddings ──► Qdrant
+                                                                     │
+                                             permission-aware retrieval + RAG chat
 ```
 
-`AuthService` owns authentication use cases and transaction boundaries. Repositories perform persistence operations using `flush()`; they do not independently commit changes. This allows, for example, refresh-token revocation and issuance to be committed atomically.
-
-The current structure is:
+The backend follows a layered design so that HTTP, business rules, and persistence remain independently testable:
 
 ```text
-backend/
-├── alembic/                 # Migration environment and revisions
-├── app/
-│   ├── api/                 # HTTP routes and dependencies
-│   ├── core/                # Configuration, logging, exceptions
-│   ├── db/                  # Engine, session, declarative base
-│   ├── models/              # SQLAlchemy models
-│   ├── repositories/        # Database queries and persistence
-│   ├── schemas/             # Request and response models
-│   ├── security/            # Hashing, JWTs, access-token dependency
-│   └── services/            # Application use cases
-├── Dockerfile
-├── requirements.txt
-└── .env.example
+API routes and dependencies → services → repositories → PostgreSQL
+                                 │
+                           schemas and security
 ```
 
-This will remain layered until RBAC and SSO introduce enough domains to justify a vertical-slice refactor.
+Services own transaction boundaries. Repositories add, query, flush, and delete records but do not independently commit, so related changes either commit together or roll back together.
 
-### Container startup architecture
+### Authentication and authorization
+
+Authentication establishes a local AegisAI user. Authorization then decides whether that user may perform a specific action.
 
 ```text
-docker compose up --build --force-recreate
-                    │
-                    ▼
-          PostgreSQL health check passes
-                    │
-                    ▼
-      backend/scripts/start_backend.sh
-        ├── run unit tests
-        ├── alembic upgrade head
-        └── exec Uvicorn (FastAPI API)
-                    │
-                    ▼
-       API :8000  •  PostgreSQL :5432  •  Qdrant :6333
+Password login or verified SSO identity
+                 │
+                 ▼
+      local AegisAI user and session
+      access JWT + persisted refresh token
+                 │
+                 ▼
+       Authorization: Bearer <access JWT>
+                 │
+                 ▼
+       get_current_user validates token and loads user
+                 │
+                 ▼
+ require_permission checks PostgreSQL-backed RBAC
+                 │
+        ┌────────┴────────┐
+        ▼                 ▼
+     HTTP 403          route handler
 ```
 
-The backend does not start when the tests or database migration fail. PostgreSQL
-is persistent in the `postgres_data` Docker volume; Qdrant persists data in
-`qdrant_data`.
+The access JWT contains identity and token metadata, not permissions. Each permission-aware request checks PostgreSQL, so a role or permission change applies immediately instead of waiting for an old JWT to expire.
 
-### Authentication and authorization architecture
-
-Authentication answers **who is making this request?** Authorization answers **may that authenticated user perform this action?** They are separate checks that happen in order:
+RBAC is represented by the following relationships:
 
 ```text
-Client
-  │
-  ├── POST /auth/login (email + password)
-  │     AuthService verifies the password and creates a token pair
-  │
-  └── receives:
-        access JWT: short-lived proof of identity
-        refresh JWT: longer-lived token used only to obtain a new pair
-```
-
-For every protected request, the backend first authenticates the access token:
-
-```text
-Authorization: Bearer <access JWT>
-                │
-                ▼
-       get_current_user dependency
-       1. Verify JWT signature and expiry
-       2. Require token type = access
-       3. Read the user ID from the token subject
-       4. Load that user from PostgreSQL
-                │
-                ▼
-       authenticated User, or HTTP 401
-```
-
-RBAC then authorizes the authenticated user against the permission required by the route:
-
-```text
-authenticated User + required permission (for example, documents:read)
-                │
-                ▼
-       require_permission dependency
-                │
-                ▼
-PostgreSQL source of truth
 users ──< user_roles >── roles ──< role_permissions >── permissions
-                │                                      │
-          a user may have                       documents:read
-          several roles                         roles:manage
-                                               users:manage
-                │
-                ▼
-       permission assigned through any role?
-          ├── yes → run the route handler
-          └── no  → HTTP 403 Forbidden
 ```
 
-The access JWT contains identity and token metadata, not a list of permissions. Keeping permissions in PostgreSQL means an administrator can change a user's role or a role's permissions and the next request uses the new policy without waiting for an old JWT to expire. The trade-off is one authorization query per protected, permission-aware request. This is the safer default for enterprise controls; caching can be introduced later only with deliberate invalidation rules.
+A user can have several roles, and a role can grant several permissions. The seeded `administrator` system role has every currently defined permission. Local roles are the only authorization source: SSO provider roles, groups, and access tokens are never copied into AegisAI authorization decisions.
 
-The seeded `administrator` system role is assigned every permission in the canonical catalogue. It is the initial operational access path, while regular roles and their assignments are managed through protected administrative APIs. `require_permission()` composes with `get_current_user`, so routes declare their required permission instead of implementing JWT or role checks themselves.
+### Enterprise SSO behavior
 
-### RBAC management API
+SSO supports Google, GitHub, and Microsoft Entra ID. The browser flow uses short-lived signed state, PKCE, and OIDC nonce validation where applicable. Provider tokens are used only to verify identity; AegisAI issues and stores its own tokens.
 
-The following typed `/rbac` endpoints are registered. Each requires a bearer access token, an active user, and the indicated database-backed permission.
+The local-account policy is deliberately conservative:
 
-| Method | Path | Required permission | Purpose |
-| --- | --- | --- |
-| `GET` | `/rbac/permissions` | `roles:read` | List the seeded permission catalogue |
-| `GET` | `/rbac/roles` | `roles:read` | List roles |
-| `POST` | `/rbac/roles` | `roles:manage` | Create a role |
-| `DELETE` | `/rbac/roles/{role_id}` | `roles:manage` | Delete a non-system role |
-| `GET` | `/rbac/roles/{role_id}/permissions` | `roles:read` | View role permissions |
-| `POST`, `DELETE` | `/rbac/roles/{role_id}/permissions/{permission_id}` | `roles:manage` | Grant or revoke a role permission |
-| `GET` | `/rbac/users/{user_id}/roles` | `users:read` | View user roles |
-| `POST`, `DELETE` | `/rbac/users/{user_id}/roles/{role_id}` | `roles:assign` | Assign or remove a user role |
+1. An existing unique `(provider, provider_subject)` binding always resolves to its linked AegisAI user.
+2. A new provider identity can link to an existing local user only when the provider supplies a verified email that exactly matches that user.
+3. Otherwise, a verified-email identity receives a just-in-time local AegisAI account and identity binding.
+4. An identity without a verified email is rejected rather than allowed to create or take over an account.
 
-## Testing
+Just-in-time SSO users receive an unknown, cryptographically random password hash. This keeps the existing user model consistent without creating a password credential that anyone knows. An inactive user cannot create or refresh an AegisAI session.
 
-Run the complete Phase 1–4 unit-test suite from `backend/`:
+## Quick start
 
-```bash
-venv/bin/python -m unittest discover -s tests -v
-```
+### Prerequisites
 
-The suite uses mocks for HTTP handlers and an isolated in-memory SQLite database
-for service and repository behavior. It covers authentication, JWT handling,
-refresh-token rotation, RBAC authorization, repositories, schemas, bootstrap
-operations, dependencies, API handlers, and application startup.
+- Docker Engine and Docker Compose
+- A free local port for each of `8000`, `5432`, and `6333`
 
-The backend Dockerfile runs this same command during `docker compose build
-backend`, then generates the complete Alembic upgrade SQL offline. A failing
-unit test or invalid migration fails the image build. The build uses temporary
-test settings only for those steps; runtime configuration still comes from
-Compose and `backend/.env` is excluded from the image context.
+### Start the full local stack
 
-Compose also runs the tests again, applies Alembic migrations to PostgreSQL,
-and only then starts Uvicorn. Use this single command to force that complete
-startup sequence even when Docker reuses cached image layers:
-
-```bash
-docker compose up --build --force-recreate
-```
-
-### RBAC verification
-
-Run the dependency-free RBAC test suite from `backend/`:
-
-```bash
-venv/bin/python -m unittest discover -s tests -v
-```
-
-The tests use an isolated in-memory SQLite database. They verify that a user is
-authorized only after both the role assignment and role-permission grant exist,
-that revocation takes effect immediately, and that duplicate roles, system-role
-deletion, inactive users, and missing permissions are rejected.
-
-For the real PostgreSQL migration and seeded administrator role, run the
-following in the Compose environment after registering an operator:
-
-```bash
-docker compose exec backend alembic upgrade head
-docker compose exec backend alembic current
-docker compose exec backend python -m scripts.bootstrap_administrator admin@example.com
-```
-
-Run the bootstrap command again to confirm it makes no duplicate assignment.
-
-## Run the entire project
-
-### One-time setup
-
-Install Docker with Docker Compose, then create your local configuration:
+Create the local configuration file once:
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-Set a long, unique `JWT_SECRET_KEY` in `backend/.env` before using the
-application outside local development. Keep the example `DATABASE_URL` hostname
-as `postgres`: it is the database service name used inside Compose.
+Set a long, unique `JWT_SECRET_KEY` in `backend/.env` before using the application outside local experimentation. Keep SSO disabled until at least one provider is configured.
 
-### Start everything
+Then run the one canonical startup command from the repository root:
 
 ```bash
 docker compose up --build --force-recreate
 ```
 
-This single command:
+That command builds the backend image, runs unit tests during image build, validates the Alembic migration chain, waits for PostgreSQL to become healthy, runs the tests again, applies `alembic upgrade head` to PostgreSQL, and starts Uvicorn. The backend does not start if its tests or migration fail.
 
-1. Builds the backend image.
-2. Runs all unit tests; it stops if any test fails.
-3. Waits for PostgreSQL to be healthy.
-4. Applies `alembic upgrade head` to PostgreSQL.
-5. Starts the FastAPI backend, PostgreSQL, and Qdrant services.
+When startup completes:
 
-When startup completes, open:
+| Service | URL |
+| --- | --- |
+| API | `http://localhost:8000` |
+| Health check | `http://localhost:8000/health` |
+| Interactive OpenAPI docs | `http://localhost:8000/docs` |
+| PostgreSQL | `localhost:5432` |
+| Qdrant API | `http://localhost:6333` |
 
-- API: `http://localhost:8000`
-- Interactive API documentation: `http://localhost:8000/docs`
-- PostgreSQL: `localhost:5432`
-- Qdrant: `http://localhost:6333`
-
-Stop the stack with:
+### Everyday local operations
 
 ```bash
-docker compose down
-```
-
-### Everyday Compose operations
-
-```bash
-# Follow backend startup or request logs
+# Follow backend startup and application logs
 docker compose logs -f backend
 
-# Re-run the full build, test, migration, and startup sequence
-docker compose up --build --force-recreate
-
-# Check running services
+# Check service state
 docker compose ps
+
+# Stop services while retaining PostgreSQL and Qdrant volumes
+docker compose down
+
+# Repeat the complete build, test, migrate, and start workflow
+docker compose up --build --force-recreate
 ```
 
-### Local Python development
+Docker Compose is the supported local-development workflow. It is not yet a production deployment recipe; production hardening, observability, CI/CD, Kubernetes, and multi-tenancy are planned later.
 
-Docker is sufficient to run the entire project. Python 3.12+ is only required
-when running the backend without Docker. Run local backend commands from
-`backend/` so `app` is importable:
+## Configuration
 
-```bash
-cd backend
-venv/bin/uvicorn app.main:app --reload
+Copy [backend/.env.example](backend/.env.example) to `backend/.env`. Do not commit `backend/.env`, OAuth client secrets, JWT secrets, refresh tokens, or access tokens.
+
+### Core settings
+
+| Setting | Purpose |
+| --- | --- |
+| `APP_NAME`, `APP_VERSION`, `APP_ENV` | Application identity and environment label. |
+| `HOST`, `PORT` | Backend listener configuration. Compose exposes port `8000`. |
+| `DATABASE_URL` | PostgreSQL connection URL. Inside Compose, the hostname must remain `postgres`. |
+| `QDRANT_URL` | Qdrant service URL. It is provisioned now for the later retrieval pipeline. |
+| `JWT_SECRET_KEY` | Long, unique secret used to sign AegisAI access and refresh JWTs. |
+| `JWT_ALGORITHM` | JWT signing algorithm; the supplied configuration uses `HS256`. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS` | Local token lifetimes. |
+
+### Optional SSO settings
+
+SSO is disabled by default. Enable it only after configuring one provider application and registering its exact redirect URI.
+
+| Setting | Purpose |
+| --- | --- |
+| `SSO_ENABLED` | Enables provider-based browser sign-in. |
+| `SSO_CALLBACK_BASE_URL` | Public API base URL used to build provider redirect URIs. Use HTTPS in deployed environments. |
+| `SSO_STATE_SECRET_KEY` | A distinct long random secret for signed, temporary SSO state. Do not reuse `JWT_SECRET_KEY`. |
+| `SSO_TRANSACTION_EXPIRE_MINUTES` | Short expiry for state, PKCE, and nonce transaction data. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OpenID Connect web-application credentials. |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | GitHub OAuth application credentials. |
+| `MICROSOFT_ENTRA_CLIENT_ID`, `MICROSOFT_ENTRA_CLIENT_SECRET` | Microsoft Entra ID application credentials. |
+| `MICROSOFT_ENTRA_TENANT_ID` | A tenant ID to restrict Entra sign-in, or `organizations` only when multi-tenant organizational access is intended. |
+
+Register one exact callback URL for each configured provider:
+
+```text
+{SSO_CALLBACK_BASE_URL}/auth/sso/google/callback
+{SSO_CALLBACK_BASE_URL}/auth/sso/github/callback
+{SSO_CALLBACK_BASE_URL}/auth/sso/microsoft/callback
 ```
 
-## API
+For production, use a publicly reachable HTTPS callback base URL, distinct random secrets, and a tenant-specific Entra ID whenever access should be limited to one organization.
 
-Interactive API documentation is available at `http://localhost:8000/docs`.
+## Using the API
+
+OpenAPI documentation is available at `http://localhost:8000/docs`. It is the complete live endpoint contract; the summary below highlights the current API surface.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/` | Service metadata |
-| `GET` | `/health` | Application health check |
-| `GET` | `/database/health` | PostgreSQL connectivity check |
-| `POST` | `/auth/register` | Register a user |
-| `POST` | `/auth/login` | Obtain access and refresh tokens |
-| `GET` | `/auth/me` | Return the current user |
-| `POST` | `/auth/refresh` | Rotate a refresh token and return a new pair |
-| `POST` | `/auth/logout` | Revoke a refresh token |
-| `GET` | `/protected` | Example access-token-protected endpoint |
+| `GET` | `/` | Service metadata. |
+| `GET` | `/health` | Application health check. |
+| `GET` | `/database/health` | PostgreSQL connectivity check. |
+| `POST` | `/auth/register` | Create a local email/password user. |
+| `POST` | `/auth/login` | Exchange OAuth2 form credentials for AegisAI tokens. |
+| `GET` | `/auth/me` | Return the authenticated local user. |
+| `POST` | `/auth/refresh` | Rotate a valid refresh token and return a new pair. |
+| `POST` | `/auth/logout` | Soft-revoke a refresh token. |
+| `GET` | `/auth/sso/{provider}` | Start a browser SSO flow for `google`, `github`, or `microsoft`. |
+| `GET` | `/protected` | Minimal protected-route example. |
+| `/rbac/*` | See the RBAC section below | Manage roles and assignments with administrator permissions. |
 
-### Authentication flow
+### Local login and token use
 
-1. `POST /auth/register` accepts JSON containing `email`, `full_name`, and `password`.
-2. `POST /auth/login` uses OAuth2 form data: `username` is the email and `password` is the password.
-3. Login returns an access token, refresh token, access-token lifetime in seconds, and the authenticated user.
-4. Send the access token as `Authorization: Bearer <access_token>` to protected routes.
-5. `POST /auth/refresh` validates the stored, unrevoked refresh token; it revokes that token and issues a new token pair in one transaction.
-6. `POST /auth/logout` soft-revokes the supplied refresh token.
-
-Access and refresh token lifetimes are configured with `ACCESS_TOKEN_EXPIRE_MINUTES` and `REFRESH_TOKEN_EXPIRE_DAYS`.
-
-## Database migrations
-
-Run Alembic from `backend/` locally, or inside the backend container when using Compose:
+1. Register through `POST /auth/register`, or create a local user through a verified SSO flow.
+2. Use `POST /auth/login` with OAuth2 form data (`username` is the email) for password login.
+3. Send the returned access token to protected routes.
+4. Send the refresh token only to `/auth/refresh` or `/auth/logout`; do not use it as a bearer token.
 
 ```bash
-cd backend
-venv/bin/alembic history
-venv/bin/alembic upgrade head
-venv/bin/alembic current
+curl http://localhost:8000/auth/me \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
 ```
 
-After changing SQLAlchemy models, generate and review a migration before applying it:
+### Browser SSO and Swagger
 
-```bash
-cd backend
-venv/bin/alembic revision --autogenerate -m "describe the change"
-venv/bin/alembic upgrade head
-```
-
-The current migration head includes users, refresh tokens, RBAC tables, the seeded permission catalogue, and the `administrator` system role. Review generated migrations for unintended constraints, indexes, or destructive changes before applying them.
-
-When Alembic runs on the host, use a database URL reachable from the host—normally `localhost`, not the Compose-only hostname `postgres`.
-
-## Current schema
-
-All models inherit `id`, `created_at`, and `updated_at` from the declarative base.
-
-### `users`
+Start browser SSO by visiting, for example:
 
 ```text
-id, email, full_name, password_hash, is_active,
-created_at, updated_at, last_login
+http://localhost:8000/auth/sso/google
 ```
 
-### `refresh_tokens`
+After a successful provider sign-in, AegisAI returns its own access and refresh tokens, plus the local user and provider name. The callback response is marked `Cache-Control: no-store`, and the temporary SSO transaction cookie is cleared.
+
+To test an SSO session in Swagger:
+
+1. Copy only the returned `access_token`.
+2. Open `/docs` and select **Authorize**.
+3. Choose **AegisAI access token**.
+4. Paste the raw JWT without the `Bearer ` prefix; Swagger adds that header prefix.
+5. Call `GET /auth/me` or another protected endpoint.
+
+The separate **OAuth2PasswordBearer** option in Swagger is for local password login. Both documentation options reach the same JWT validation and RBAC checks.
+
+### RBAC administration
+
+The current permission catalogue contains:
 
 ```text
-id, token, expires_at, revoked_at, user_id,
-created_at, updated_at
+documents:read     documents:write
+users:read         users:manage
+roles:read         roles:manage         roles:assign
 ```
 
-### Bootstrap the first administrator
+The `/rbac` management API requires both an active local user and the indicated database-backed permission.
 
-After applying migrations and registering the intended administrator account,
-assign the seeded role explicitly:
+| Endpoint group | Required permission | Purpose |
+| --- | --- | --- |
+| `GET /rbac/permissions`, `GET /rbac/roles`, role-permission reads | `roles:read` | View the permission catalogue, roles, and grants. |
+| Role creation/deletion and role-permission changes | `roles:manage` | Manage non-system roles and their permissions. |
+| User-role reads | `users:read` | View a user's role assignments. |
+| User-role assignment/removal | `roles:assign` | Grant or revoke roles. |
+
+Bootstrap the first administrator only after that user exists locally (through registration or SSO):
 
 ```bash
 docker compose exec backend python -m scripts.bootstrap_administrator admin@example.com
 ```
 
-The command is idempotent: running it again for the same user makes no change.
+The command is idempotent. New SSO users have no role by default, so protected RBAC management calls correctly return HTTP 403 until an administrator grants an appropriate local role.
+
+## Testing, migrations, and development
+
+### Run tests locally
+
+Run backend Python commands from `backend/`; that directory makes the `app` package importable.
+
+```bash
+cd backend
+venv/bin/python -m unittest discover -s tests -v
+```
+
+The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, Swagger security schemes, migrations, and application startup.
+
+The Dockerfile runs this suite during image build and produces the complete Alembic upgrade SQL. Compose runs the suite again before applying migrations and launching the API.
+
+### Work with migrations
+
+Compose normally applies migrations automatically at startup. For development work, run Alembic from `backend/`:
+
+```bash
+cd backend
+venv/bin/alembic history
+venv/bin/alembic revision --autogenerate -m "describe the change"
+venv/bin/alembic upgrade head
+venv/bin/alembic current
+```
+
+Review every generated migration before applying it, particularly constraint and index changes. The current migration chain creates users, refresh tokens, RBAC tables and seeded permissions, the `administrator` system role, and external-identity bindings.
+
+When running Alembic from the host, use a database URL reachable from the host—normally `localhost`, not Compose's internal `postgres` hostname. `ALEMBIC_DATABASE_URL` can override the configured database URL for that command.
+
+### Repository layout
+
+```text
+.
+├── backend/
+│   ├── alembic/             # Migration environment and revisions
+│   ├── app/
+│   │   ├── api/             # HTTP routes and FastAPI dependencies
+│   │   ├── core/            # Settings, logging, and domain exceptions
+│   │   ├── db/              # Engine, sessions, and declarative base
+│   │   ├── integrations/    # External provider adapters, including SSO
+│   │   ├── models/          # SQLAlchemy models
+│   │   ├── repositories/    # Database queries and persistence operations
+│   │   ├── schemas/         # Request and response contracts
+│   │   ├── security/        # Password hashing, JWTs, RBAC guards, SSO state
+│   │   └── services/        # Transactional application use cases
+│   ├── scripts/             # Startup and administrator bootstrap commands
+│   ├── tests/               # Unit and API-boundary tests
+│   ├── Dockerfile
+│   └── .env.example
+└── docker-compose.yaml      # Local API, PostgreSQL, and Qdrant stack
+```
+
+## Security notes
+
+- Keep `backend/.env`, OAuth secrets, JWTs, and refresh tokens out of source control, issue trackers, screenshots, and shared terminal output.
+- Rotate a token if it is exposed. `/auth/logout` revokes its refresh token; the associated access token remains valid only until its configured short expiry.
+- Keep `JWT_SECRET_KEY` and `SSO_STATE_SECRET_KEY` distinct to limit the impact of a compromised secret.
+- Register exact HTTPS OAuth callback URLs in deployed environments. OAuth providers reject mismatched redirect URIs.
+- Provider access tokens are not returned as AegisAI session tokens and are not used for AegisAI authorization.
+- The current project has no published vulnerability-reporting policy. Do not disclose security-sensitive material in a public issue.
 
 ## Roadmap
 
-- [x] Phase 1 — Foundation and containerized services
-- [x] Phase 2 — Database layer and Alembic
-- [x] Phase 3 — Authentication, refresh-token lifecycle, and transaction boundaries
-- [x] Phase 4 — RBAC: roles, permissions, assignments, and authorization dependencies
-- [ ] Phase 5 — Enterprise SSO: Google, GitHub, and Microsoft Entra ID
-- [ ] Phase 6 — Document management and ingestion
-- [ ] Phase 7 — Background processing with Redis/Celery
-- [ ] Phase 8 — Text extraction and chunking
-- [ ] Phase 9 — Embeddings and Qdrant indexing
-- [ ] Phase 10 — Retrieval engine and metadata filtering
-- [ ] Phase 11 — RAG chat with streaming and citations
-- [ ] Phase 12 — Permission-aware retrieval
-- [ ] Phase 13 — Audit logging
-- [ ] Phase 14 — Admin dashboard
-- [ ] Phase 15 — Next.js frontend
-- [ ] Phase 16 — Observability
-- [ ] Phase 17 — CI/CD
-- [ ] Phase 18 — Kubernetes
-- [ ] Phase 19 — Multi-tenancy
-- [ ] Phase 20 — Enterprise features such as API keys, rate limiting, and retention policies
+The next implementation milestones are:
 
-## Development workflow
-
-1. Create a focused branch.
-2. Change application code and SQLAlchemy models as needed.
-3. Generate, inspect, and apply an Alembic migration for schema changes.
-4. Validate the affected API flow and migration state.
-5. Commit the application changes and migration together.
+1. **Phase 6:** document management and ingestion.
+2. **Phase 7:** Redis/Celery background processing.
+3. **Phase 8:** text extraction and chunking.
+4. **Phase 9:** embeddings and Qdrant indexing.
+5. **Phase 10:** retrieval and metadata filtering.
+6. **Phase 11:** RAG chat, streaming, and citations.
+7. **Phase 12:** permission-aware retrieval.
+8. **Phase 13:** audit logging.
+9. **Phase 14:** administration dashboard.
+10. **Phase 15:** Next.js frontend.
+11. **Phase 16:** observability.
+12. **Phase 17:** CI/CD.
+13. **Phase 18:** Kubernetes.
+14. **Phase 19:** multi-tenancy.
+15. **Phase 20:** enterprise API keys, rate limits, and retention policies.
