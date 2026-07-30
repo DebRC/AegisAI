@@ -193,6 +193,12 @@ After account resolution, the callback calls the same `AuthService.issue_session
 
 The provider is only proof of authentication. The local user ID remains the JWT subject, and authorization continues through `get_current_user()` and PostgreSQL-backed RBAC on every protected request. Provider roles, groups, and access tokens are neither placed in the AegisAI JWT nor used for authorization. Inactive local users cannot receive new SSO/password sessions or refresh an existing session.
 
+### Swagger SSO testing (Phase 5.7)
+
+`/docs` exposes two equivalent ways to authorize protected API requests. **OAuth2PasswordBearer** uses the local `/auth/login` password flow. **AegisAI access token** accepts a JWT already issued through SSO or password login. To test an SSO session, complete the browser sign-in at `/auth/sso/google` (or another configured provider), copy only the returned `access_token`, then open `/docs`, select **Authorize**, and paste that token under **AegisAI access token**. Do not paste the `Bearer ` prefix; Swagger adds it to requests.
+
+Both OpenAPI schemes call the same `get_current_user()` validation and database-backed RBAC checks. The second scheme is documentation usability only; it does not weaken authentication or create a separate authorization path.
+
 ### SSO provider integration (Phase 5.3)
 
 Provider-specific protocol work is isolated in `backend/app/integrations/sso/`. Future HTTP routes will call a provider adapter and receive one `ProviderIdentity` result: provider name, immutable provider subject, optional email, email-verification status, and optional display name. This prevents provider JSON shapes and endpoint URLs from leaking into API routes or the local-user service.
@@ -435,7 +441,7 @@ The command is idempotent: running it again for the same user makes no change.
 - [x] Phase 2 — Database layer and Alembic
 - [x] Phase 3 — Authentication, refresh-token lifecycle, and transaction boundaries
 - [x] Phase 4 — RBAC: roles, permissions, assignments, and authorization dependencies
-- [ ] Phase 5 — Enterprise SSO: Google, GitHub, and Microsoft Entra ID
+- [x] Phase 5 — Enterprise SSO: Google, GitHub, and Microsoft Entra ID
 - [ ] Phase 6 — Document management and ingestion
 - [ ] Phase 7 — Background processing with Redis/Celery
 - [ ] Phase 8 — Text extraction and chunking

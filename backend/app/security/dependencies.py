@@ -1,6 +1,8 @@
 from fastapi import Depends
 from fastapi import HTTPException
 from fastapi import status
+from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -14,16 +16,34 @@ from app.security.jwt import decode_token
 from app.security.permissions import PermissionCode
 
 oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="/auth/login"
+    tokenUrl="/auth/login",
+    auto_error=False,
+)
+
+access_token_bearer = HTTPBearer(
+    scheme_name="AegisAI access token",
+    bearerFormat="JWT",
+    description="Paste an access token issued by password login or SSO.",
+    auto_error=False,
 )
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
+    bearer_credentials: HTTPAuthorizationCredentials | None = Depends(
+        access_token_bearer
+    ),
 ) -> User:
+    access_token = getattr(bearer_credentials, "credentials", None) or token
+    if access_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
     try:
-        payload = decode_token(token)
+        payload = decode_token(access_token)
     except AuthenticationError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
