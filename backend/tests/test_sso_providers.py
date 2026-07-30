@@ -93,7 +93,7 @@ class SsoProviderTests(unittest.TestCase):
 
         identity = GitHubOAuthProvider(
             "github-id", "github-secret", "https://api.example.com", make_client(handler)
-        ).get_identity(ProviderTokens(access_token="github-token"))
+        ).get_identity(ProviderTokens(access_token="github-token"), "not-used")
 
         self.assertEqual(identity.provider, ProviderName.GITHUB)
         self.assertEqual(identity.subject, "42")
@@ -103,7 +103,13 @@ class SsoProviderTests(unittest.TestCase):
 
     @patch("app.integrations.sso.providers.jwt.decode")
     @patch("app.integrations.sso.providers.jwt.get_unverified_header")
-    def test_oidc_identity_validates_token_and_nonce(self, header, decode) -> None:
+    @patch("app.integrations.sso.providers.logger.warning")
+    def test_oidc_identity_validates_token_and_nonce(
+        self,
+        warning,
+        header,
+        decode,
+    ) -> None:
         header.return_value = {"alg": "RS256", "kid": "key-1"}
         decode.return_value = {
             "sub": "provider-subject",
@@ -144,6 +150,7 @@ class SsoProviderTests(unittest.TestCase):
             algorithms=["RS256"],
             audience="google-id",
             options={"verify_iss": False},
+            access_token="access",
         )
 
         decode.side_effect = JWTError("invalid")
@@ -152,6 +159,7 @@ class SsoProviderTests(unittest.TestCase):
                 ProviderTokens(access_token="access", id_token="signed-token"),
                 "expected-nonce",
             )
+        warning.assert_called_once()
 
     @patch("app.integrations.sso.providers.jwt.decode")
     @patch("app.integrations.sso.providers.jwt.get_unverified_header")

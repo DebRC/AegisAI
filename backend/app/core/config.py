@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     SSO_ENABLED: bool = False
     SSO_CALLBACK_BASE_URL: str = "http://localhost:8000"
     SSO_STATE_SECRET_KEY: str = ""
+    SSO_TRANSACTION_EXPIRE_MINUTES: int = 5
 
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""

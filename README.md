@@ -155,6 +155,7 @@ SSO is disabled by default. Copy the values from `backend/.env.example` into `ba
 | --- | --- |
 | `SSO_CALLBACK_BASE_URL` | Public base URL of this API. In production this must be an HTTPS address reachable by the identity provider. |
 | `SSO_STATE_SECRET_KEY` | A distinct, long random secret used to sign temporary OAuth state. It is separate from the JWT signing secret to limit blast radius. |
+| `SSO_TRANSACTION_EXPIRE_MINUTES` | Lifetime of the signed browser transaction holding temporary state, PKCE, and nonce values. Keep this short; the default is five minutes. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Credentials for a Google OpenID Connect web application. |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Credentials for a GitHub OAuth application. |
 | `MICROSOFT_ENTRA_CLIENT_ID`, `MICROSOFT_ENTRA_CLIENT_SECRET` | Credentials for a Microsoft Entra ID OpenID Connect application. |
@@ -170,7 +171,15 @@ Phase 5 will register one redirect URI per provider, all handled by AegisAI:
 
 For production, do not use the localhost example URLs. Register the exact HTTPS callback URLs with each provider; OAuth providers reject redirect URIs that do not match exactly. Use a tenant-specific Entra ID value whenever AegisAI is intended for one organization, rather than accepting identities from every organization.
 
-The upcoming callback flow will use short-lived, signed `state` values to bind the callback to the login request, PKCE to protect authorization-code exchange, and `nonce` validation for OpenID Connect ID tokens. Google and Entra ID supply OpenID Connect identity tokens; GitHub's OAuth flow will retrieve the authenticated profile and verified email through GitHub's API. Provider access tokens will be used only for this exchange and profile lookup, never returned as AegisAI session tokens or stored as a substitute for local authorization.
+The callback flow uses short-lived, signed `state` values to bind the callback to the login request, PKCE to protect authorization-code exchange, and `nonce` validation for OpenID Connect ID tokens. Google and Entra ID supply OpenID Connect identity tokens; GitHub's OAuth flow retrieves the authenticated profile and verified email through GitHub's API. Provider access tokens are used only for this exchange and profile lookup, never returned as AegisAI session tokens or stored as a substitute for local authorization.
+
+### SSO browser flow (Phase 5.4)
+
+`GET /auth/sso/{provider}` begins a browser login for `google`, `github`, or `microsoft`. It generates random state, PKCE, and nonce values; stores them only in a signed, `HttpOnly`, `SameSite=Lax` temporary cookie scoped to that provider's callback path; then redirects to the provider. The cookie expires after `SSO_TRANSACTION_EXPIRE_MINUTES` (five minutes by default). It is marked `Secure` whenever `SSO_CALLBACK_BASE_URL` uses HTTPS.
+
+`GET /auth/sso/{provider}/callback` requires the provider's returned state to match the signed cookie before exchanging the authorization code. It then verifies the external identity through the provider adapter and always clears the transaction cookie on a completed or failed callback. Provider configuration errors return HTTP 503, invalid/expired callback transactions return HTTP 400, and upstream provider verification failures return HTTP 502 without exposing provider token details.
+
+This checkpoint verifies the browser-to-provider flow but intentionally does not create/link a local user or issue AegisAI JWTs yet. Phase 5.5 will make the verified identity useful by applying the account-linking and just-in-time provisioning rules.
 
 ### SSO provider integration (Phase 5.3)
 

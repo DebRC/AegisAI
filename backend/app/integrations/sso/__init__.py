@@ -12,4 +12,6 @@ __all__ = [
     "ProviderIdentity",
     "ProviderName",
     "ProviderTokens",
+    "SsoProviderFactory",
 ]
+from app.integrations.sso.factory import SsoProviderFactory

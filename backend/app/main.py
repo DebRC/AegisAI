@@ -7,6 +7,7 @@ try:
     from app.api.database import router as database_router
     from app.api.protected import router as protected_router
     from app.api.auth import router as auth_router
+    from app.api.sso import router as sso_router
     from app.api.rbac import router as rbac_router
     from app.core.config import settings
     from app.core.logging import logger
@@ -17,6 +18,7 @@ except ModuleNotFoundError as exc:
     from api.database import router as database_router
     from app.api.protected import router as protected_router
     from app.api.auth import router as auth_router
+    from app.api.sso import router as sso_router
     from app.api.rbac import router as rbac_router
     from core.config import settings
     from core.logging import logger
@@ -37,6 +39,7 @@ app.include_router(health_router)
 app.include_router(database_router)
 app.include_router(protected_router)
 app.include_router(auth_router)
+app.include_router(sso_router)
 app.include_router(rbac_router)
 
 @app.get("/")

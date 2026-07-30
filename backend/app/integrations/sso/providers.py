@@ -8,6 +8,7 @@ from jose import jwt
 
 from app.core.exceptions import SsoProviderConfigurationError
 from app.core.exceptions import SsoProviderError
+from app.core.logging import logger
 from app.integrations.sso.models import ProviderIdentity
 from app.integrations.sso.models import ProviderName
 from app.integrations.sso.models import ProviderTokens
@@ -87,6 +88,13 @@ class BaseOAuthProvider:
     def _authorization_parameters(self, nonce: str) -> dict[str, str]:
         return {}
 
+    def get_identity(
+        self,
+        tokens: ProviderTokens,
+        expected_nonce: str,
+    ) -> ProviderIdentity:
+        raise NotImplementedError
+
     def _require_configuration(self) -> None:
         if not self.client_id or not self.client_secret:
             raise SsoProviderConfigurationError(
@@ -134,7 +142,12 @@ class OidcProvider(BaseOAuthProvider):
             raise SsoProviderError("Provider did not return an ID token")
 
         metadata = self._get_metadata()
-        claims = self._decode_identity_token(tokens.id_token, metadata, expected_nonce)
+        claims = self._decode_identity_token(
+            tokens.id_token,
+            tokens.access_token,
+            metadata,
+            expected_nonce,
+        )
         subject = claims.get("sub")
         if not isinstance(subject, str) or not subject:
             raise SsoProviderError("Provider ID token does not include a subject")
@@ -159,6 +172,7 @@ class OidcProvider(BaseOAuthProvider):
     def _decode_identity_token(
         self,
         id_token: str,
+        access_token: str,
         metadata: Mapping[str, Any],
         expected_nonce: str,
     ) -> Mapping[str, Any]:
@@ -186,8 +200,14 @@ class OidcProvider(BaseOAuthProvider):
                 algorithms=["RS256"],
                 audience=self.client_id,
                 options={"verify_iss": False},
+                access_token=access_token,
             )
         except JWTError as error:
+            logger.warning(
+                "%s ID token validation failed: %s",
+                self.name.value,
+                error,
+            )
             raise SsoProviderError("Provider ID token validation failed") from error
 
         self._validate_issuer(claims, metadata)
@@ -278,7 +298,11 @@ class GitHubOAuthProvider(BaseOAuthProvider):
     profile_endpoint = "https://api.github.com/user"
     emails_endpoint = "https://api.github.com/user/emails"
 
-    def get_identity(self, tokens: ProviderTokens) -> ProviderIdentity:
+    def get_identity(
+        self,
+        tokens: ProviderTokens,
+        expected_nonce: str,
+    ) -> ProviderIdentity:
         headers = {
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {tokens.access_token}",

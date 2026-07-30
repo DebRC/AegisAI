@@ -10,6 +10,10 @@ class SsoProviderError(Exception):
     """Raised when an external SSO provider rejects or cannot complete a flow."""
 
 
+class SsoTransactionError(Exception):
+    """Raised when an SSO browser transaction is invalid or expired."""
+
+
 class UserAlreadyExistsError(Exception):
     """Raised when a user with the given email already exists."""
 

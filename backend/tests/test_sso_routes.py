@@ -1,0 +1,126 @@
+import json
+import unittest
+from unittest.mock import Mock
+
+from starlette.requests import Request
+
+from app.api import sso as sso_api
+from app.integrations.sso.models import ProviderIdentity
+from app.integrations.sso.models import ProviderName
+from app.integrations.sso.models import ProviderTokens
+from app.security.sso_transactions import SsoTransactionManager
+
+
+def request_with_cookie(name: str, value: str) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/auth/sso/google/callback",
+            "headers": [(b"cookie", f"{name}={value}".encode())],
+        }
+    )
+
+
+class SsoRouteTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.transactions = SsoTransactionManager("state-secret", 5, secure_cookie=False)
+        self.provider = Mock()
+        self.provider.build_authorization_url.return_value = "https://provider.example/authorize"
+        self.provider.exchange_code.return_value = ProviderTokens(access_token="provider-token")
+        self.provider.get_identity.return_value = ProviderIdentity(
+            provider=ProviderName.GITHUB,
+            subject="42",
+            email="user@example.com",
+            email_verified=True,
+            full_name="Test User",
+        )
+        self.factory = Mock()
+        self.factory.create.return_value = self.provider
+
+    def test_begin_sso_redirects_and_sets_http_only_transaction_cookie(self) -> None:
+        response = sso_api.begin_sso(
+            ProviderName.GITHUB,
+            self.factory,
+            self.transactions,
+        )
+
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"], "https://provider.example/authorize")
+        cookie = response.headers["set-cookie"]
+        self.assertIn("sso_transaction_github=", cookie)
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("SameSite=lax", cookie)
+        self.assertIn("Path=/auth/sso/github/callback", cookie)
+        self.provider.build_authorization_url.assert_called_once()
+
+    def test_code_challenge_uses_the_pkce_s256_transformation(self) -> None:
+        self.assertEqual(
+            sso_api._code_challenge(
+                "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+            ),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        )
+
+    def test_complete_sso_verifies_callback_and_clears_cookie(self) -> None:
+        transaction = self.transactions.create(ProviderName.GITHUB)
+        request = request_with_cookie(
+            self.transactions.cookie_name(ProviderName.GITHUB),
+            self.transactions.encode(transaction),
+        )
+
+        response = sso_api.complete_sso(
+            ProviderName.GITHUB,
+            request,
+            transaction.state,
+            "authorization-code",
+            None,
+            self.factory,
+            self.transactions,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            json.loads(response.body),
+            {"message": "External identity verified", "provider": "github"},
+        )
+        self.provider.exchange_code.assert_called_once_with(
+            "authorization-code",
+            transaction.code_verifier,
+        )
+        self.provider.get_identity.assert_called_once_with(
+            self.provider.exchange_code.return_value,
+            transaction.nonce,
+        )
+        self.assertIn("Max-Age=0", response.headers["set-cookie"])
+
+    def test_complete_sso_rejects_error_or_state_mismatch_and_clears_cookie(self) -> None:
+        transaction = self.transactions.create(ProviderName.GOOGLE)
+        request = request_with_cookie(
+            self.transactions.cookie_name(ProviderName.GOOGLE),
+            self.transactions.encode(transaction),
+        )
+
+        failed = sso_api.complete_sso(
+            ProviderName.GOOGLE,
+            request,
+            transaction.state,
+            None,
+            "access_denied",
+            self.factory,
+            self.transactions,
+        )
+        self.assertEqual(failed.status_code, 400)
+        self.assertIn("Max-Age=0", failed.headers["set-cookie"])
+
+        mismatch = sso_api.complete_sso(
+            ProviderName.GOOGLE,
+            request,
+            "wrong-state",
+            "authorization-code",
+            None,
+            self.factory,
+            self.transactions,
+        )
+        self.assertEqual(mismatch.status_code, 400)
+        self.assertIn("Max-Age=0", mismatch.headers["set-cookie"])
