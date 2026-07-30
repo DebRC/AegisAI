@@ -179,7 +179,13 @@ The callback flow uses short-lived, signed `state` values to bind the callback t
 
 `GET /auth/sso/{provider}/callback` requires the provider's returned state to match the signed cookie before exchanging the authorization code. It then verifies the external identity through the provider adapter and always clears the transaction cookie on a completed or failed callback. Provider configuration errors return HTTP 503, invalid/expired callback transactions return HTTP 400, and upstream provider verification failures return HTTP 502 without exposing provider token details.
 
-This checkpoint verifies the browser-to-provider flow but intentionally does not create/link a local user or issue AegisAI JWTs yet. Phase 5.5 will make the verified identity useful by applying the account-linking and just-in-time provisioning rules.
+### SSO account linking and provisioning (Phase 5.5)
+
+After provider verification, `SsoAccountService` resolves the external identity in one database transaction. An existing `(provider, provider_subject)` binding always selects its already-linked local user; it never selects a user by a mutable provider email. On each successful provider login, the binding's email metadata and verification flag are refreshed.
+
+For a provider identity that has not been linked before, AegisAI requires a verified provider email. It links to a local user only when that email exactly matches an existing local account; otherwise, it just-in-time provisions an active local user and creates the external-identity binding. Identities with absent or unverified email are rejected, so an untrusted provider claim cannot take over or create a local account. Microsoft Entra email remains unverified by default and therefore requires an explicit future linking policy or a provider configuration that supplies a verifiable identifier.
+
+Just-in-time SSO users receive a cryptographically random password hash that is never returned or known to anyone. This satisfies the existing non-null password field without creating a usable password-login credential. A successful Phase 5.5 callback confirms that the external identity is linked to a local account, but still does not issue AegisAI access or refresh tokens; Phase 5.6 will create those local sessions and preserve the database-backed RBAC behavior.
 
 ### SSO provider integration (Phase 5.3)
 

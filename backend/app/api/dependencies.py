@@ -8,6 +8,7 @@ from app.integrations.sso.factory import SsoProviderFactory
 from app.security.sso_transactions import SsoTransactionManager
 from app.services.auth_service import AuthService
 from app.services.rbac_service import RbacService
+from app.services.sso_account_service import SsoAccountService
 
 
 def get_auth_service(
@@ -20,6 +21,12 @@ def get_rbac_service(
     db: Session = Depends(get_db),
 ) -> RbacService:
     return RbacService(db)
+
+
+def get_sso_account_service(
+    db: Session = Depends(get_db),
+) -> SsoAccountService:
+    return SsoAccountService(db)
 
 
 def get_sso_provider_factory() -> SsoProviderFactory:

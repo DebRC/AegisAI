@@ -14,6 +14,14 @@ class SsoTransactionError(Exception):
     """Raised when an SSO browser transaction is invalid or expired."""
 
 
+class SsoEmailVerificationError(Exception):
+    """Raised when an SSO identity cannot safely identify a local account."""
+
+
+class SsoAccountResolutionError(Exception):
+    """Raised when a concurrent SSO account-linking operation conflicts."""
+
+
 class UserAlreadyExistsError(Exception):
     """Raised when a user with the given email already exists."""
 

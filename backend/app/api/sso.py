@@ -10,8 +10,11 @@ from fastapi import status
 from fastapi.responses import JSONResponse
 from fastapi.responses import RedirectResponse
 
+from app.api.dependencies import get_sso_account_service
 from app.api.dependencies import get_sso_provider_factory
 from app.api.dependencies import get_sso_transaction_manager
+from app.core.exceptions import SsoAccountResolutionError
+from app.core.exceptions import SsoEmailVerificationError
 from app.core.exceptions import SsoProviderConfigurationError
 from app.core.exceptions import SsoProviderError
 from app.core.exceptions import SsoTransactionError
@@ -20,6 +23,7 @@ from app.integrations.sso.factory import SsoProviderFactory
 from app.integrations.sso.models import ProviderName
 from app.schemas.sso import SsoCallbackResponse
 from app.security.sso_transactions import SsoTransactionManager
+from app.services.sso_account_service import SsoAccountService
 
 
 router = APIRouter(prefix="/auth/sso", tags=["Single sign-on"])
@@ -68,6 +72,7 @@ def complete_sso(
     error: str | None = None,
     factory: SsoProviderFactory = Depends(get_sso_provider_factory),
     transactions: SsoTransactionManager = Depends(get_sso_transaction_manager),
+    accounts: SsoAccountService = Depends(get_sso_account_service),
 ) -> JSONResponse:
     cookie_name = transactions.cookie_name(provider)
     transaction_cookie = request.cookies.get(cookie_name)
@@ -85,7 +90,8 @@ def complete_sso(
         with httpx.Client(timeout=10.0) as http_client:
             oauth_provider = factory.create(provider, http_client)
             tokens = oauth_provider.exchange_code(code, transaction.code_verifier)
-            oauth_provider.get_identity(tokens, transaction.nonce)
+            identity = oauth_provider.get_identity(tokens, transaction.nonce)
+        accounts.resolve_identity(identity)
     except SsoTransactionError as error:
         return _callback_error(
             provider,
@@ -108,11 +114,26 @@ def complete_sso(
             status.HTTP_502_BAD_GATEWAY,
             "SSO provider verification failed",
         )
+    except SsoEmailVerificationError:
+        return _callback_error(
+            provider,
+            transactions,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "A verified email address is required to create or link an account",
+        )
+    except SsoAccountResolutionError:
+        logger.warning("%s SSO account linking conflict", provider.value)
+        return _callback_error(
+            provider,
+            transactions,
+            status.HTTP_409_CONFLICT,
+            "SSO account linking conflict; retry sign-in",
+        )
 
     response = JSONResponse(
         status_code=status.HTTP_200_OK,
         content=SsoCallbackResponse(
-            message="External identity verified",
+            message="External identity linked to a local account",
             provider=provider,
         ).model_dump(mode="json"),
     )

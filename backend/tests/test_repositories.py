@@ -100,6 +100,17 @@ class RepositoryTests(DatabaseTestCase, unittest.TestCase):
             repository.get_by_provider_and_subject("github", "google-subject-123")
         )
 
+        identity.provider_email = "updated@example.com"
+        repository.update()
+        self.session.commit()
+        self.assertEqual(
+            repository.get_by_provider_and_subject(
+                "google",
+                "google-subject-123",
+            ).provider_email,
+            "updated@example.com",
+        )
+
         self.session.add(
             ExternalIdentity(
                 provider="google",

@@ -14,6 +14,7 @@ from app.api import protected as protected_api
 from app.api import rbac as rbac_api
 from app.api.dependencies import get_auth_service
 from app.api.dependencies import get_rbac_service
+from app.api.dependencies import get_sso_account_service
 from app.core.exceptions import AuthenticationError
 from app.core.exceptions import RoleAlreadyExistsError
 from app.core.exceptions import RoleNotFoundError
@@ -29,6 +30,7 @@ from app.security.constants import TokenType
 from app.security.permissions import PermissionCode
 from app.services.auth_service import AuthService
 from app.services.rbac_service import RbacService
+from app.services.sso_account_service import SsoAccountService
 
 
 class ApplicationTests(unittest.TestCase):
@@ -48,6 +50,7 @@ class ApplicationTests(unittest.TestCase):
 
         self.assertIsInstance(get_auth_service(session), AuthService)
         self.assertIsInstance(get_rbac_service(session), RbacService)
+        self.assertIsInstance(get_sso_account_service(session), SsoAccountService)
 
     def test_current_user_and_permission_dependencies(self) -> None:
         active_user = SimpleNamespace(id=5, is_active=True)

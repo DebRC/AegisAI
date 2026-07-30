@@ -34,3 +34,6 @@ class ExternalIdentityRepository:
                 .order_by(ExternalIdentity.provider, ExternalIdentity.id)
             )
         )
+
+    def update(self) -> None:
+        self.db.flush()

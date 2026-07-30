@@ -5,6 +5,7 @@ from unittest.mock import Mock
 from starlette.requests import Request
 
 from app.api import sso as sso_api
+from app.core.exceptions import SsoEmailVerificationError
 from app.integrations.sso.models import ProviderIdentity
 from app.integrations.sso.models import ProviderName
 from app.integrations.sso.models import ProviderTokens
@@ -37,6 +38,7 @@ class SsoRouteTests(unittest.TestCase):
         )
         self.factory = Mock()
         self.factory.create.return_value = self.provider
+        self.accounts = Mock()
 
     def test_begin_sso_redirects_and_sets_http_only_transaction_cookie(self) -> None:
         response = sso_api.begin_sso(
@@ -77,12 +79,16 @@ class SsoRouteTests(unittest.TestCase):
             None,
             self.factory,
             self.transactions,
+            self.accounts,
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             json.loads(response.body),
-            {"message": "External identity verified", "provider": "github"},
+            {
+                "message": "External identity linked to a local account",
+                "provider": "github",
+            },
         )
         self.provider.exchange_code.assert_called_once_with(
             "authorization-code",
@@ -92,6 +98,31 @@ class SsoRouteTests(unittest.TestCase):
             self.provider.exchange_code.return_value,
             transaction.nonce,
         )
+        self.accounts.resolve_identity.assert_called_once_with(
+            self.provider.get_identity.return_value,
+        )
+        self.assertIn("Max-Age=0", response.headers["set-cookie"])
+
+    def test_complete_sso_rejects_identity_without_a_verified_email(self) -> None:
+        transaction = self.transactions.create(ProviderName.GITHUB)
+        request = request_with_cookie(
+            self.transactions.cookie_name(ProviderName.GITHUB),
+            self.transactions.encode(transaction),
+        )
+        self.accounts.resolve_identity.side_effect = SsoEmailVerificationError()
+
+        response = sso_api.complete_sso(
+            ProviderName.GITHUB,
+            request,
+            transaction.state,
+            "authorization-code",
+            None,
+            self.factory,
+            self.transactions,
+            self.accounts,
+        )
+
+        self.assertEqual(response.status_code, 422)
         self.assertIn("Max-Age=0", response.headers["set-cookie"])
 
     def test_complete_sso_rejects_error_or_state_mismatch_and_clears_cookie(self) -> None:
@@ -109,6 +140,7 @@ class SsoRouteTests(unittest.TestCase):
             "access_denied",
             self.factory,
             self.transactions,
+            self.accounts,
         )
         self.assertEqual(failed.status_code, 400)
         self.assertIn("Max-Age=0", failed.headers["set-cookie"])
@@ -121,6 +153,7 @@ class SsoRouteTests(unittest.TestCase):
             None,
             self.factory,
             self.transactions,
+            self.accounts,
         )
         self.assertEqual(mismatch.status_code, 400)
         self.assertIn("Max-Age=0", mismatch.headers["set-cookie"])
