@@ -23,7 +23,10 @@ from app.integrations.sso.factory import SsoProviderFactory
 from app.integrations.sso.models import ProviderName
 from app.schemas.sso import SsoCallbackResponse
 from app.security.sso_transactions import SsoTransactionManager
+from app.services.auth_service import AuthService
 from app.services.sso_account_service import SsoAccountService
+from app.api.dependencies import get_auth_service
+from app.core.exceptions import AuthenticationError
 
 
 router = APIRouter(prefix="/auth/sso", tags=["Single sign-on"])
@@ -73,6 +76,7 @@ def complete_sso(
     factory: SsoProviderFactory = Depends(get_sso_provider_factory),
     transactions: SsoTransactionManager = Depends(get_sso_transaction_manager),
     accounts: SsoAccountService = Depends(get_sso_account_service),
+    auth_service: AuthService = Depends(get_auth_service),
 ) -> JSONResponse:
     cookie_name = transactions.cookie_name(provider)
     transaction_cookie = request.cookies.get(cookie_name)
@@ -91,7 +95,8 @@ def complete_sso(
             oauth_provider = factory.create(provider, http_client)
             tokens = oauth_provider.exchange_code(code, transaction.code_verifier)
             identity = oauth_provider.get_identity(tokens, transaction.nonce)
-        accounts.resolve_identity(identity)
+        user = accounts.resolve_identity(identity)
+        session = auth_service.issue_session(user)
     except SsoTransactionError as error:
         return _callback_error(
             provider,
@@ -129,13 +134,21 @@ def complete_sso(
             status.HTTP_409_CONFLICT,
             "SSO account linking conflict; retry sign-in",
         )
+    except AuthenticationError:
+        return _callback_error(
+            provider,
+            transactions,
+            status.HTTP_401_UNAUTHORIZED,
+            "Inactive user",
+        )
 
     response = JSONResponse(
         status_code=status.HTTP_200_OK,
         content=SsoCallbackResponse(
-            message="External identity linked to a local account",
+            **session.model_dump(mode="json"),
             provider=provider,
         ).model_dump(mode="json"),
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
     )
     _clear_transaction_cookie(response, provider, transactions)
     return response

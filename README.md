@@ -185,7 +185,13 @@ After provider verification, `SsoAccountService` resolves the external identity 
 
 For a provider identity that has not been linked before, AegisAI requires a verified provider email. It links to a local user only when that email exactly matches an existing local account; otherwise, it just-in-time provisions an active local user and creates the external-identity binding. Identities with absent or unverified email are rejected, so an untrusted provider claim cannot take over or create a local account. Microsoft Entra email remains unverified by default and therefore requires an explicit future linking policy or a provider configuration that supplies a verifiable identifier.
 
-Just-in-time SSO users receive a cryptographically random password hash that is never returned or known to anyone. This satisfies the existing non-null password field without creating a usable password-login credential. A successful Phase 5.5 callback confirms that the external identity is linked to a local account, but still does not issue AegisAI access or refresh tokens; Phase 5.6 will create those local sessions and preserve the database-backed RBAC behavior.
+Just-in-time SSO users receive a cryptographically random password hash that is never returned or known to anyone. This satisfies the existing non-null password field without creating a usable password-login credential.
+
+### Local SSO sessions and RBAC continuity (Phase 5.6)
+
+After account resolution, the callback calls the same `AuthService.issue_session()` method used by password login. It creates a signed AegisAI access token, persists a rotatable refresh token, sets `last_login`, and returns the standard token-and-user response with the SSO provider name. The response is marked `Cache-Control: no-store` and the temporary SSO transaction cookie is cleared.
+
+The provider is only proof of authentication. The local user ID remains the JWT subject, and authorization continues through `get_current_user()` and PostgreSQL-backed RBAC on every protected request. Provider roles, groups, and access tokens are neither placed in the AegisAI JWT nor used for authorization. Inactive local users cannot receive new SSO/password sessions or refresh an existing session.
 
 ### SSO provider integration (Phase 5.3)
 

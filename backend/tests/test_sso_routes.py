@@ -1,14 +1,19 @@
 import json
 import unittest
+from datetime import datetime
+from datetime import timezone
 from unittest.mock import Mock
 
 from starlette.requests import Request
 
 from app.api import sso as sso_api
+from app.core.exceptions import AuthenticationError
 from app.core.exceptions import SsoEmailVerificationError
 from app.integrations.sso.models import ProviderIdentity
 from app.integrations.sso.models import ProviderName
 from app.integrations.sso.models import ProviderTokens
+from app.schemas.token import LoginResponse
+from app.schemas.user import UserResponse
 from app.security.sso_transactions import SsoTransactionManager
 
 
@@ -39,6 +44,21 @@ class SsoRouteTests(unittest.TestCase):
         self.factory = Mock()
         self.factory.create.return_value = self.provider
         self.accounts = Mock()
+        self.local_user = Mock()
+        self.accounts.resolve_identity.return_value = self.local_user
+        self.auth_service = Mock()
+        self.auth_service.issue_session.return_value = LoginResponse(
+            access_token="access-token",
+            refresh_token="refresh-token",
+            expires_in=900,
+            user=UserResponse(
+                id=1,
+                email="user@example.com",
+                full_name="Test User",
+                is_active=True,
+                created_at=datetime.now(timezone.utc),
+            ),
+        )
 
     def test_begin_sso_redirects_and_sets_http_only_transaction_cookie(self) -> None:
         response = sso_api.begin_sso(
@@ -80,13 +100,26 @@ class SsoRouteTests(unittest.TestCase):
             self.factory,
             self.transactions,
             self.accounts,
+            self.auth_service,
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             json.loads(response.body),
             {
-                "message": "External identity linked to a local account",
+                "access_token": "access-token",
+                "refresh_token": "refresh-token",
+                "token_type": "bearer",
+                "expires_in": 900,
+                "user": {
+                    "id": 1,
+                    "email": "user@example.com",
+                    "full_name": "Test User",
+                    "is_active": True,
+                    "created_at": self.auth_service.issue_session.return_value.model_dump(
+                        mode="json"
+                    )["user"]["created_at"],
+                },
                 "provider": "github",
             },
         )
@@ -101,6 +134,9 @@ class SsoRouteTests(unittest.TestCase):
         self.accounts.resolve_identity.assert_called_once_with(
             self.provider.get_identity.return_value,
         )
+        self.auth_service.issue_session.assert_called_once_with(self.local_user)
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(response.headers["pragma"], "no-cache")
         self.assertIn("Max-Age=0", response.headers["set-cookie"])
 
     def test_complete_sso_rejects_identity_without_a_verified_email(self) -> None:
@@ -120,9 +156,33 @@ class SsoRouteTests(unittest.TestCase):
             self.factory,
             self.transactions,
             self.accounts,
+            self.auth_service,
         )
 
         self.assertEqual(response.status_code, 422)
+        self.assertIn("Max-Age=0", response.headers["set-cookie"])
+
+    def test_complete_sso_rejects_an_inactive_local_account(self) -> None:
+        transaction = self.transactions.create(ProviderName.GITHUB)
+        request = request_with_cookie(
+            self.transactions.cookie_name(ProviderName.GITHUB),
+            self.transactions.encode(transaction),
+        )
+        self.auth_service.issue_session.side_effect = AuthenticationError()
+
+        response = sso_api.complete_sso(
+            ProviderName.GITHUB,
+            request,
+            transaction.state,
+            "authorization-code",
+            None,
+            self.factory,
+            self.transactions,
+            self.accounts,
+            self.auth_service,
+        )
+
+        self.assertEqual(response.status_code, 401)
         self.assertIn("Max-Age=0", response.headers["set-cookie"])
 
     def test_complete_sso_rejects_error_or_state_mismatch_and_clears_cookie(self) -> None:
@@ -141,6 +201,7 @@ class SsoRouteTests(unittest.TestCase):
             self.factory,
             self.transactions,
             self.accounts,
+            self.auth_service,
         )
         self.assertEqual(failed.status_code, 400)
         self.assertIn("Max-Age=0", failed.headers["set-cookie"])
@@ -154,6 +215,7 @@ class SsoRouteTests(unittest.TestCase):
             self.factory,
             self.transactions,
             self.accounts,
+            self.auth_service,
         )
         self.assertEqual(mismatch.status_code, 400)
         self.assertIn("Max-Age=0", mismatch.headers["set-cookie"])
