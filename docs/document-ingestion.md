@@ -209,7 +209,7 @@ The later Phase 6 checkpoints must test:
 2. [x] Add storage configuration, the document model, status enum, migration,
    and Docker volume (6.2).
 3. [x] Implement the storage adapter and repository boundaries (6.3).
-4. [ ] Implement transactional document services and failure cleanup (6.4).
+4. [x] Implement transactional document services and failure cleanup (6.4).
 5. [ ] Add typed document schemas and RBAC-protected HTTP routes (6.5).
 6. [ ] Add pagination, rename, and deletion behavior (6.6).
 7. [ ] Verify authorization, file handling, migration behavior, and Docker

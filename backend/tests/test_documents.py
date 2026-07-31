@@ -5,10 +5,14 @@ from pathlib import Path
 import tempfile
 import unittest
 from uuid import UUID
+from unittest.mock import patch
 
+from app.core.exceptions import DocumentPersistenceError
+from app.core.exceptions import DocumentValidationError
 from app.models import Document
 from app.models import DocumentStatus
 from app.repositories.document_repository import DocumentRepository
+from app.services.document_service import DocumentService
 from app.storage.documents import EmptyDocumentError
 from app.storage.documents import DocumentStorageError
 from app.storage.documents import LocalDocumentStorage
@@ -132,3 +136,86 @@ class LocalDocumentStorageTests(unittest.TestCase):
         self.assertFalse((self.root_path / stored.storage_key).exists())
         with self.assertRaises(ValueError):
             storage.delete("../../outside-the-storage-root")
+
+
+class DocumentServiceTests(DatabaseTestCase, unittest.TestCase):
+    def setUp(self) -> None:
+        self.set_up_database()
+        self.user = self.create_user()
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.root_path = Path(self.temporary_directory.name)
+        self.storage = LocalDocumentStorage(self.root_path, maximum_bytes=1024)
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+        self.tear_down_database()
+
+    def test_upload_stores_matching_metadata_and_original_bytes(self) -> None:
+        document = DocumentService(self.session, self.storage).upload(
+            uploader_user_id=self.user.id,
+            original_filename="team-policy.md",
+            content_type="text/markdown; charset=utf-8",
+            chunks=[b"AegisAI policy"],
+        )
+
+        self.assertEqual(document.title, "team-policy")
+        self.assertEqual(document.original_filename, "team-policy.md")
+        self.assertEqual(document.content_type, "text/markdown")
+        self.assertEqual(document.status, DocumentStatus.PENDING)
+        self.assertEqual(document.size_bytes, len(b"AegisAI policy"))
+        self.assertEqual(
+            document.sha256,
+            hashlib.sha256(b"AegisAI policy").hexdigest(),
+        )
+        self.assertEqual(
+            (self.root_path / document.storage_key).read_bytes(),
+            b"AegisAI policy",
+        )
+
+    def test_upload_rejects_invalid_metadata_before_writing_bytes(self) -> None:
+        service = DocumentService(self.session, self.storage)
+
+        with self.assertRaises(DocumentValidationError):
+            service.upload(
+                uploader_user_id=self.user.id,
+                original_filename="malware.exe",
+                content_type="application/octet-stream",
+                chunks=[b"not stored"],
+            )
+
+        self.assertEqual(list((self.root_path / "documents").iterdir()), [])
+        self.assertEqual(self.session.query(Document).count(), 0)
+
+    def test_upload_cleans_up_when_metadata_flush_fails(self) -> None:
+        service = DocumentService(self.session, self.storage)
+
+        with patch.object(
+            service.documents,
+            "create",
+            side_effect=RuntimeError("database flush failed"),
+        ):
+            with self.assertRaises(DocumentPersistenceError):
+                service.upload(
+                    uploader_user_id=self.user.id,
+                    original_filename="security-policy.txt",
+                    content_type="text/plain",
+                    chunks=[b"sensitive policy"],
+                )
+
+        self.assertEqual(self.session.query(Document).count(), 0)
+        self.assertEqual(list((self.root_path / "documents").iterdir()), [])
+
+    def test_upload_rolls_back_metadata_and_removes_bytes_when_commit_fails(self) -> None:
+        service = DocumentService(self.session, self.storage)
+
+        with patch.object(self.session, "commit", side_effect=RuntimeError("database down")):
+            with self.assertRaises(DocumentPersistenceError):
+                service.upload(
+                    uploader_user_id=self.user.id,
+                    original_filename="security-policy.txt",
+                    content_type="text/plain",
+                    chunks=[b"sensitive policy"],
+                )
+
+        self.assertEqual(self.session.query(Document).count(), 0)
+        self.assertEqual(list((self.root_path / "documents").iterdir()), [])

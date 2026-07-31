@@ -60,3 +60,11 @@ class RolePermissionNotFoundError(Exception):
 
 class SystemRoleModificationError(Exception):
     """Raised when an operation attempts to delete a protected system role."""
+
+
+class DocumentValidationError(Exception):
+    """Raised when uploaded document metadata violates the ingestion policy."""
+
+
+class DocumentPersistenceError(Exception):
+    """Raised when document metadata cannot be committed after storage succeeds."""
