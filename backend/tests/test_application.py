@@ -127,6 +127,35 @@ class ApplicationTests(unittest.TestCase):
         guard = dependencies.require_permission(PermissionCode.ROLES_READ)
         self.assertIs(guard(active_user, allowed_database), active_user)
 
+    def test_document_routes_require_expected_permissions(self) -> None:
+        expected_permissions = {
+            ("/documents", "POST"): PermissionCode.DOCUMENTS_WRITE,
+            ("/documents", "GET"): PermissionCode.DOCUMENTS_READ,
+            ("/documents/{document_id}", "GET"): PermissionCode.DOCUMENTS_READ,
+            ("/documents/{document_id}", "PATCH"): PermissionCode.DOCUMENTS_WRITE,
+            ("/documents/{document_id}", "DELETE"): PermissionCode.DOCUMENTS_WRITE,
+        }
+
+        actual_permissions = {
+            (route.path, method): self._route_permission(route)
+            for route in documents_api.router.routes
+            for method in route.methods
+        }
+
+        self.assertEqual(actual_permissions, expected_permissions)
+
+    @staticmethod
+    def _route_permission(route) -> PermissionCode:
+        permissions = [
+            cell.cell_contents
+            for dependency in route.dependant.dependencies
+            for cell in (getattr(dependency.call, "__closure__", None) or [])
+            if isinstance(cell.cell_contents, PermissionCode)
+        ]
+        if len(permissions) != 1:
+            raise AssertionError(f"Expected one permission dependency for {route.path}")
+        return permissions[0]
+
     def test_openapi_exposes_password_and_pasteable_bearer_schemes(self) -> None:
         openapi = app.openapi()
         schemes = openapi["components"]["securitySchemes"]

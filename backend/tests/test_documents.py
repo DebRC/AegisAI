@@ -192,6 +192,21 @@ class DocumentServiceTests(DatabaseTestCase, unittest.TestCase):
             b"AegisAI policy",
         )
 
+    def test_upload_records_uploader_provenance_without_resource_acl(self) -> None:
+        uploader = self.create_user("uploader@example.com")
+        service = DocumentService(self.session, self.storage)
+
+        document = service.upload(
+            uploader_user_id=uploader.id,
+            original_filename="team-policy.txt",
+            content_type="text/plain",
+            chunks=[b"policy"],
+        )
+
+        self.assertEqual(document.uploader_user_id, uploader.id)
+        self.assertEqual(document.uploader, uploader)
+        self.assertEqual(DocumentResponse.model_validate(document).uploader_user_id, uploader.id)
+
     def test_upload_rejects_invalid_metadata_before_writing_bytes(self) -> None:
         service = DocumentService(self.session, self.storage)
 

@@ -165,6 +165,13 @@ These permissions are global within the deployment: a user with
 uploaded. `uploader_user_id` records provenance and prepares for later audit,
 tenancy, and resource-level policies; it does not alter Phase 6 authorization.
 
+Authorization runs at the API boundary before `DocumentService` is called.
+Only `POST /documents` uses the authenticated user to set
+`uploader_user_id`; a client cannot submit a different uploader ID. The
+service intentionally does not make ownership-based allow/deny decisions,
+because that would silently introduce a per-document ACL policy before tenant
+and resource-policy rules have been designed.
+
 ## HTTP API contract
 
 The upcoming document router uses `/documents` and requires an AegisAI access
@@ -217,7 +224,9 @@ The later Phase 6 checkpoints must test:
 4. [x] Implement transactional document services and failure cleanup (6.4).
 5. [x] Add typed document schemas and RBAC-protected HTTP routes (6.5).
 6. [x] Add pagination, rename, and deletion behavior (6.6).
-7. [ ] Verify authorization, file handling, migration behavior, and Docker
-   startup (6.7).
-8. [ ] Consolidate user-facing documentation and manually test the full upload
-   lifecycle (6.8).
+7. [x] Verify RBAC and ownership rules: enforce `documents:read` and
+   `documents:write` consistently, and preserve `uploader_user_id` as
+   provenance for future tenant and document-level policies (6.7).
+8. [ ] Run the complete tests, migration and Compose verification, then
+   consolidate user-facing documentation and manually test the authenticated
+   upload lifecycle (6.8).
