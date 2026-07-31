@@ -9,6 +9,7 @@ try:
     from app.api.auth import router as auth_router
     from app.api.sso import router as sso_router
     from app.api.rbac import router as rbac_router
+    from app.api.documents import router as documents_router
     from app.core.config import settings
     from app.core.logging import logger
 except ModuleNotFoundError as exc:
@@ -20,6 +21,7 @@ except ModuleNotFoundError as exc:
     from app.api.auth import router as auth_router
     from app.api.sso import router as sso_router
     from app.api.rbac import router as rbac_router
+    from app.api.documents import router as documents_router
     from core.config import settings
     from core.logging import logger
 
@@ -41,6 +43,7 @@ app.include_router(protected_router)
 app.include_router(auth_router)
 app.include_router(sso_router)
 app.include_router(rbac_router)
+app.include_router(documents_router)
 
 @app.get("/")
 def root():

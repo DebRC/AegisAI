@@ -2,7 +2,7 @@
 
 AegisAI is a secure, enterprise-oriented knowledge platform in development. It is being built to let organizations ingest internal content, retrieve it safely, and eventually chat with it through a permission-aware RAG experience.
 
-The backend foundation is complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, and enterprise SSO. Document ingestion, embeddings, retrieval, and chat are planned next.
+The backend foundation and document-ingestion boundary are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, and secure document management. Processing, embeddings, retrieval, and chat are planned next.
 
 ## Overview
 
@@ -14,9 +14,10 @@ The backend foundation is complete: containerized FastAPI services, PostgreSQL, 
 | Local authentication | Available | User registration, bcrypt password hashing, short-lived access JWTs, rotatable refresh tokens, logout, and inactive-user protection. |
 | Authorization | Available | Local roles and permissions, administrator bootstrap, and request-time RBAC enforcement. |
 | Enterprise SSO | Available | Google OpenID Connect, GitHub OAuth, and Microsoft Entra ID adapters with PKCE, signed state, nonce validation, account linking, and local AegisAI sessions. |
-| Knowledge pipeline | Planned | Document ingestion, background processing, extraction, chunking, embeddings, Qdrant indexing, retrieval, and RAG chat. |
+| Document ingestion | Available | RBAC-protected upload, metadata management, local persistent original-file storage, SHA-256 integrity metadata, and soft deletion. |
+| Knowledge processing and retrieval | Planned | Background processing, extraction, chunking, embeddings, Qdrant indexing, retrieval, and RAG chat. |
 
-Qdrant is already provisioned as local infrastructure, but AegisAI does not yet store documents or vectors in it.
+Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; it does not yet store vectors in Qdrant.
 
 ### Technology
 
@@ -35,10 +36,16 @@ Qdrant is already provisioned as local infrastructure, but AegisAI does not yet 
 | Milestone | Status | Delivered or planned outcome |
 | --- | --- | --- |
 | Phases 1–5 — Foundation, data, identity, and access control | Complete | Containerized backend, migrations, local authentication, RBAC, and enterprise SSO. |
-| Phases 6–8 — Knowledge ingestion | Planned | Document management, asynchronous processing, text extraction, and chunking. |
+| Phase 6 — Document ingestion | Complete | Secure local storage, upload validation, metadata lifecycle, RBAC enforcement, and document-management APIs. |
+| Phases 7–8 — Document processing | Planned | Asynchronous processing, text extraction, and chunking. |
 | Phases 9–12 — Retrieval and RAG | Planned | Embeddings, vector indexing, metadata filtering, streaming chat, citations, and permission-aware retrieval. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
+
+### Engineering documents
+
+- [RBAC design](docs/rbac.md) explains the current role and permission model.
+- [Document ingestion design](docs/document-ingestion.md) defines the implemented Phase 6 storage, lifecycle, authorization, and API contract.
 
 ## Architecture
 
@@ -201,6 +208,8 @@ Copy [backend/.env.example](backend/.env.example) to `backend/.env`. Do not comm
 | `HOST`, `PORT` | Backend listener configuration. Compose exposes port `8000`. |
 | `DATABASE_URL` | PostgreSQL connection URL. Inside Compose, the hostname must remain `postgres`. |
 | `QDRANT_URL` | Qdrant service URL. It is provisioned now for the later retrieval pipeline. |
+| `DOCUMENT_STORAGE_PATH` | Local original-document storage path. Compose mounts the persistent `document_data` volume at this path. |
+| `DOCUMENT_MAX_UPLOAD_BYTES` | Maximum streamed upload size. The default is 25 MiB and is enforced by the upload service. |
 | `JWT_SECRET_KEY` | Long, unique secret used to sign AegisAI access and refresh JWTs. |
 | `JWT_ALGORITHM` | JWT signing algorithm; the supplied configuration uses `HS256`. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS` | Local token lifetimes. |
@@ -247,6 +256,9 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | `GET` | `/auth/sso/{provider}` | Start a browser SSO flow for `google`, `github`, or `microsoft`. |
 | `GET` | `/protected` | Minimal protected-route example. |
 | `/rbac/*` | See the RBAC section below | Manage roles and assignments with administrator permissions. |
+| `POST` | `/documents` | Upload an allowed document with `documents:write`. |
+| `GET` | `/documents?offset=0&limit=25` | List document metadata with `documents:read`. |
+| `GET`, `PATCH`, `DELETE` | `/documents/{document_id}` | Inspect with `documents:read`; rename or delete with `documents:write`. |
 
 ### Local login and token use
 
@@ -259,6 +271,19 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 curl http://localhost:8000/auth/me \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
 ```
+
+### Document management
+
+`POST /documents` accepts one multipart `file` field. PDFs, DOCX, TXT, and
+Markdown are supported, and the default streamed limit is 25 MiB. The server
+derives the title, generates the storage key, and records the authenticated
+uploader; clients never supply a storage path or uploader ID.
+
+Document reads and writes use the existing global `documents:read` and
+`documents:write` permissions. `uploader_user_id` is provenance for future
+tenant and resource policies, not a current per-document access rule. See the
+[document ingestion design](docs/document-ingestion.md) for the complete API,
+lifecycle, and storage behavior.
 
 ### Browser SSO and Swagger
 
@@ -374,18 +399,17 @@ When running Alembic from the host, use a database URL reachable from the host�
 
 The next implementation milestones are:
 
-1. **Phase 6:** document management and ingestion.
-2. **Phase 7:** Redis/Celery background processing.
-3. **Phase 8:** text extraction and chunking.
-4. **Phase 9:** embeddings and Qdrant indexing.
-5. **Phase 10:** retrieval and metadata filtering.
-6. **Phase 11:** RAG chat, streaming, and citations.
-7. **Phase 12:** permission-aware retrieval.
-8. **Phase 13:** audit logging.
-9. **Phase 14:** administration dashboard.
-10. **Phase 15:** Next.js frontend.
-11. **Phase 16:** observability.
-12. **Phase 17:** CI/CD.
-13. **Phase 18:** Kubernetes.
-14. **Phase 19:** multi-tenancy.
-15. **Phase 20:** enterprise API keys, rate limits, and retention policies.
+1. **Phase 7:** Redis/Celery background processing.
+2. **Phase 8:** text extraction and chunking.
+3. **Phase 9:** embeddings and Qdrant indexing.
+4. **Phase 10:** retrieval and metadata filtering.
+5. **Phase 11:** RAG chat, streaming, and citations.
+6. **Phase 12:** permission-aware retrieval.
+7. **Phase 13:** audit logging.
+8. **Phase 14:** administration dashboard.
+9. **Phase 15:** Next.js frontend.
+10. **Phase 16:** observability.
+11. **Phase 17:** CI/CD.
+12. **Phase 18:** Kubernetes.
+13. **Phase 19:** multi-tenancy.
+14. **Phase 20:** enterprise API keys, rate limits, and retention policies.

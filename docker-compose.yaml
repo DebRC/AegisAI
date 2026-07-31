@@ -10,6 +10,9 @@ services:
     env_file:
       - backend/.env
 
+    volumes:
+      - document_data:/data/documents
+
     command: ["/bin/sh", "/app/scripts/start_backend.sh"]
 
     depends_on:
@@ -60,3 +63,5 @@ volumes:
   postgres_data:
 
   qdrant_data:
+
+  document_data:

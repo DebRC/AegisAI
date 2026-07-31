@@ -7,8 +7,11 @@ from app.db.database import get_db
 from app.integrations.sso.factory import SsoProviderFactory
 from app.security.sso_transactions import SsoTransactionManager
 from app.services.auth_service import AuthService
+from app.services.document_service import DocumentService
 from app.services.rbac_service import RbacService
 from app.services.sso_account_service import SsoAccountService
+from app.storage.documents import DocumentStorage
+from app.storage.documents import LocalDocumentStorage
 
 
 def get_auth_service(
@@ -21,6 +24,20 @@ def get_rbac_service(
     db: Session = Depends(get_db),
 ) -> RbacService:
     return RbacService(db)
+
+
+def get_document_storage() -> DocumentStorage:
+    return LocalDocumentStorage(
+        settings.DOCUMENT_STORAGE_PATH,
+        settings.DOCUMENT_MAX_UPLOAD_BYTES,
+    )
+
+
+def get_document_service(
+    db: Session = Depends(get_db),
+    storage: DocumentStorage = Depends(get_document_storage),
+) -> DocumentService:
+    return DocumentService(db, storage)
 
 
 def get_sso_account_service(

@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     QDRANT_URL: str
 
+    DOCUMENT_STORAGE_PATH: str = "/data/documents"
+    DOCUMENT_MAX_UPLOAD_BYTES: int = 25 * 1024 * 1024
+
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str
 
