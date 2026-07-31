@@ -93,8 +93,8 @@ also removes the stored object. Restore and retention are not promised yet.
 
 ## Metadata contract
 
-The future `documents` table inherits `id`, `created_at`, and `updated_at` from
-the existing declarative base.
+The `documents` table inherits `id`, `created_at`, and `updated_at` from the
+existing declarative base.
 
 | Field | Purpose and rule |
 | --- | --- |
@@ -132,9 +132,9 @@ The local adapter is a development choice, not a production storage strategy.
 
 ## Upload acceptance policy
 
-The first release accepts the following formats, subject to an actual byte-size
-limit of 25 MiB by default. The limit will be configurable as
-`DOCUMENT_MAX_UPLOAD_BYTES` before the upload endpoint is introduced.
+The first release accepts the following formats, subject to the configured
+`DOCUMENT_MAX_UPLOAD_BYTES` limit of 25 MiB by default. The upcoming upload
+endpoint will enforce that streamed byte limit.
 
 | Format | Extensions | MIME type |
 | --- | --- | --- |
@@ -205,14 +205,14 @@ The later Phase 6 checkpoints must test:
 
 ## Implementation sequence
 
-1. Define this contract (6.1).
-2. Add storage configuration, the document model, status enum, migration, and
-   Docker volume (6.2).
-3. Implement the storage adapter and repository boundaries (6.3).
-4. Implement transactional document services and failure cleanup (6.4).
-5. Add typed document schemas and RBAC-protected HTTP routes (6.5).
-6. Add pagination, rename, and deletion behavior (6.6).
-7. Verify authorization, file handling, migration behavior, and Docker startup
-   (6.7).
-8. Consolidate user-facing documentation and manually test the full upload
+1. [x] Define this contract (6.1).
+2. [x] Add storage configuration, the document model, status enum, migration,
+   and Docker volume (6.2).
+3. [ ] Implement the storage adapter and repository boundaries (6.3).
+4. [ ] Implement transactional document services and failure cleanup (6.4).
+5. [ ] Add typed document schemas and RBAC-protected HTTP routes (6.5).
+6. [ ] Add pagination, rename, and deletion behavior (6.6).
+7. [ ] Verify authorization, file handling, migration behavior, and Docker
+   startup (6.7).
+8. [ ] Consolidate user-facing documentation and manually test the full upload
    lifecycle (6.8).

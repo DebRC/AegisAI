@@ -207,6 +207,8 @@ Copy [backend/.env.example](backend/.env.example) to `backend/.env`. Do not comm
 | `HOST`, `PORT` | Backend listener configuration. Compose exposes port `8000`. |
 | `DATABASE_URL` | PostgreSQL connection URL. Inside Compose, the hostname must remain `postgres`. |
 | `QDRANT_URL` | Qdrant service URL. It is provisioned now for the later retrieval pipeline. |
+| `DOCUMENT_STORAGE_PATH` | Local original-document storage path. Compose mounts the persistent `document_data` volume at this path. |
+| `DOCUMENT_MAX_UPLOAD_BYTES` | Maximum streamed upload size. The default is 25 MiB; the upcoming upload service enforces it. |
 | `JWT_SECRET_KEY` | Long, unique secret used to sign AegisAI access and refresh JWTs. |
 | `JWT_ALGORITHM` | JWT signing algorithm; the supplied configuration uses `HS256`. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS` | Local token lifetimes. |
