@@ -1,4 +1,5 @@
 import asyncio
+import io
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -9,13 +10,18 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api import auth as auth_api
 from app.api import database as database_api
+from app.api import documents as documents_api
 from app.api import health as health_api
 from app.api import protected as protected_api
 from app.api import rbac as rbac_api
 from app.api.dependencies import get_auth_service
+from app.api.dependencies import get_document_service
 from app.api.dependencies import get_rbac_service
 from app.api.dependencies import get_sso_account_service
 from app.core.exceptions import AuthenticationError
+from app.core.exceptions import DocumentNotFoundError
+from app.core.exceptions import DocumentPersistenceError
+from app.core.exceptions import DocumentValidationError
 from app.core.exceptions import RoleAlreadyExistsError
 from app.core.exceptions import RoleNotFoundError
 from app.core.exceptions import SystemRoleModificationError
@@ -29,8 +35,10 @@ from app.security import dependencies
 from app.security.constants import TokenType
 from app.security.permissions import PermissionCode
 from app.services.auth_service import AuthService
+from app.services.document_service import DocumentService
 from app.services.rbac_service import RbacService
 from app.services.sso_account_service import SsoAccountService
+from app.storage.documents import DocumentStorageError
 
 
 class ApplicationTests(unittest.TestCase):
@@ -51,6 +59,10 @@ class ApplicationTests(unittest.TestCase):
         self.assertIsInstance(get_auth_service(session), AuthService)
         self.assertIsInstance(get_rbac_service(session), RbacService)
         self.assertIsInstance(get_sso_account_service(session), SsoAccountService)
+        self.assertIsInstance(
+            get_document_service(session, Mock()),
+            DocumentService,
+        )
 
     def test_current_user_and_permission_dependencies(self) -> None:
         active_user = SimpleNamespace(id=5, is_active=True)
@@ -124,6 +136,17 @@ class ApplicationTests(unittest.TestCase):
         security = openapi["paths"]["/auth/me"]["get"]["security"]
         self.assertIn({"OAuth2PasswordBearer": []}, security)
         self.assertIn({"AegisAI access token": []}, security)
+
+        document_paths = openapi["paths"]
+        self.assertEqual(document_paths["/documents"]["post"]["responses"]["201"]["description"], "Successful Response")
+        self.assertIn(
+            {"OAuth2PasswordBearer": []},
+            document_paths["/documents"]["post"]["security"],
+        )
+        self.assertIn(
+            {"AegisAI access token": []},
+            document_paths["/documents/{document_id}"]["get"]["security"],
+        )
 
     def test_basic_routes_and_lifespan(self) -> None:
         self.assertEqual(health_api.health(), {"status": "healthy"})
@@ -212,4 +235,52 @@ class ApplicationTests(unittest.TestCase):
                 SystemRoleModificationError()
             ).status_code,
             400,
+        )
+
+    def test_document_route_handlers_and_error_translation(self) -> None:
+        service = Mock()
+        user = SimpleNamespace(id=7)
+        upload = SimpleNamespace(
+            filename="security-policy.txt",
+            content_type="text/plain",
+            file=io.BytesIO(b"policy"),
+        )
+        document = SimpleNamespace(id=3)
+        service.upload.return_value = document
+        service.list_documents.return_value = [document]
+        service.get_document.return_value = document
+
+        self.assertIs(
+            documents_api.upload_document(upload, user, service),
+            document,
+        )
+        upload_arguments = service.upload.call_args.kwargs
+        self.assertEqual(upload_arguments["uploader_user_id"], user.id)
+        self.assertEqual(upload_arguments["original_filename"], "security-policy.txt")
+        self.assertEqual(upload_arguments["content_type"], "text/plain")
+        self.assertEqual(list(upload_arguments["chunks"]), [b"policy"])
+        self.assertEqual(documents_api.list_documents(service), [document])
+        self.assertIs(documents_api.get_document(3, service), document)
+
+        service.upload.side_effect = DocumentValidationError()
+        with self.assertRaises(HTTPException) as context:
+            documents_api.upload_document(upload, user, service)
+        self.assertEqual(context.exception.status_code, 422)
+
+        service.get_document.side_effect = DocumentNotFoundError()
+        with self.assertRaises(HTTPException) as context:
+            documents_api.get_document(3, service)
+        self.assertEqual(context.exception.status_code, 404)
+
+        self.assertEqual(
+            documents_api._document_error_to_http_exception(
+                DocumentPersistenceError()
+            ).status_code,
+            503,
+        )
+        self.assertEqual(
+            documents_api._document_error_to_http_exception(
+                DocumentStorageError()
+            ).status_code,
+            503,
         )

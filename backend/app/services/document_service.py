@@ -4,6 +4,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import DocumentPersistenceError
+from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import DocumentValidationError
 from app.models.document import Document
 from app.repositories.document_repository import DocumentRepository
@@ -63,6 +64,17 @@ class DocumentService:
             self.db.rollback()
             self._remove_stored_document(stored)
             raise DocumentPersistenceError() from error
+
+    def list_documents(self) -> list[Document]:
+        """Return the first bounded page of non-deleted document metadata."""
+        return self.documents.list_active(offset=0, limit=50)
+
+    def get_document(self, document_id: int) -> Document:
+        """Return non-deleted metadata or hide deleted records as not found."""
+        document = self.documents.get_active_by_id(document_id)
+        if document is None:
+            raise DocumentNotFoundError()
+        return document
 
     def _commit(self) -> None:
         self.db.commit()

@@ -8,11 +8,13 @@ from uuid import UUID
 from unittest.mock import patch
 
 from app.core.exceptions import DocumentPersistenceError
+from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import DocumentValidationError
 from app.models import Document
 from app.models import DocumentStatus
 from app.repositories.document_repository import DocumentRepository
 from app.services.document_service import DocumentService
+from app.schemas.document import DocumentResponse
 from app.storage.documents import EmptyDocumentError
 from app.storage.documents import DocumentStorageError
 from app.storage.documents import LocalDocumentStorage
@@ -46,6 +48,23 @@ class DocumentModelTests(DatabaseTestCase, unittest.TestCase):
         self.assertEqual(self.user.uploaded_documents, [document])
         self.assertIsNone(document.deleted_at)
         self.assertIsNone(document.processing_error)
+
+    def test_document_response_omits_internal_storage_key(self) -> None:
+        document = Document(
+            uploader_user_id=self.user.id,
+            title="Security policy",
+            original_filename="security-policy.pdf",
+            content_type="application/pdf",
+            size_bytes=1024,
+            sha256="a" * 64,
+            storage_key="documents/00000000-0000-0000-0000-000000000001",
+        )
+        self.session.add(document)
+        self.session.commit()
+
+        response = DocumentResponse.model_validate(document)
+
+        self.assertNotIn("storage_key", response.model_dump())
 
 
 class DocumentRepositoryTests(DatabaseTestCase, unittest.TestCase):
@@ -219,3 +238,17 @@ class DocumentServiceTests(DatabaseTestCase, unittest.TestCase):
 
         self.assertEqual(self.session.query(Document).count(), 0)
         self.assertEqual(list((self.root_path / "documents").iterdir()), [])
+
+    def test_list_and_get_return_only_active_document_metadata(self) -> None:
+        service = DocumentService(self.session, self.storage)
+        document = service.upload(
+            uploader_user_id=self.user.id,
+            original_filename="security-policy.txt",
+            content_type="text/plain",
+            chunks=[b"policy"],
+        )
+
+        self.assertEqual(service.list_documents(), [document])
+        self.assertEqual(service.get_document(document.id), document)
+        with self.assertRaises(DocumentNotFoundError):
+            service.get_document(9999)

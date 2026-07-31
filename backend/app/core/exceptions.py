@@ -68,3 +68,7 @@ class DocumentValidationError(Exception):
 
 class DocumentPersistenceError(Exception):
     """Raised when document metadata cannot be committed after storage succeeds."""
+
+
+class DocumentNotFoundError(Exception):
+    """Raised when a requested document is absent or has been soft-deleted."""
