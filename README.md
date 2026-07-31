@@ -35,10 +35,16 @@ Qdrant is already provisioned as local infrastructure, but AegisAI does not yet 
 | Milestone | Status | Delivered or planned outcome |
 | --- | --- | --- |
 | Phases 1–5 — Foundation, data, identity, and access control | Complete | Containerized backend, migrations, local authentication, RBAC, and enterprise SSO. |
-| Phases 6–8 — Knowledge ingestion | Planned | Document management, asynchronous processing, text extraction, and chunking. |
+| Phase 6 — Document ingestion | In progress | Secure document metadata, local storage, upload validation, and document-management APIs. |
+| Phases 7–8 — Document processing | Planned | Asynchronous processing, text extraction, and chunking. |
 | Phases 9–12 — Retrieval and RAG | Planned | Embeddings, vector indexing, metadata filtering, streaming chat, citations, and permission-aware retrieval. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
+
+### Engineering documents
+
+- [RBAC design](docs/rbac.md) explains the current role and permission model.
+- [Document ingestion design](docs/document-ingestion.md) defines the Phase 6 contract that upcoming storage, database, and API work will implement.
 
 ## Architecture
 
