@@ -133,8 +133,8 @@ The local adapter is a development choice, not a production storage strategy.
 ## Upload acceptance policy
 
 The first release accepts the following formats, subject to the configured
-`DOCUMENT_MAX_UPLOAD_BYTES` limit of 25 MiB by default. The upcoming upload
-endpoint will enforce that streamed byte limit.
+`DOCUMENT_MAX_UPLOAD_BYTES` limit of 25 MiB by default. The upload endpoint
+enforces that streamed byte limit.
 
 | Format | Extensions | MIME type |
 | --- | --- | --- |
@@ -174,8 +174,8 @@ and resource-policy rules have been designed.
 
 ## HTTP API contract
 
-The upcoming document router uses `/documents` and requires an AegisAI access
-JWT plus the documented permission.
+The document router uses `/documents` and requires an AegisAI access JWT plus
+the documented permission.
 
 | Method | Path | Permission | Intended response |
 | --- | --- | --- | --- |
@@ -201,9 +201,9 @@ restore active metadata after its stored bytes may already have been removed.
 | Document does not exist or is deleted | `404 Not Found` |
 | Storage cannot safely complete the operation | `503 Service Unavailable` without storage internals in the response |
 
-## Verification plan
+## Verification coverage
 
-The later Phase 6 checkpoints must test:
+Phase 6 verification covers:
 
 - permitted and rejected upload types;
 - streamed size limits, empty uploads, and generated storage keys;
@@ -215,18 +215,38 @@ The later Phase 6 checkpoints must test:
 - migration upgrade and downgrade review; and
 - Docker build/startup execution of the complete suite.
 
+## Manual authenticated lifecycle check
+
+After starting the stack with `docker compose up --build --force-recreate`:
+
+1. Obtain an access token for an active user with `documents:read` and
+   `documents:write` (the seeded administrator role has both permissions).
+2. Open `http://localhost:8000/docs`, select **Authorize**, choose **AegisAI
+   access token**, and paste the raw access token.
+3. Call `POST /documents` with a small PDF, DOCX, TXT, or Markdown file.
+4. Use `GET /documents` and `GET /documents/{document_id}` to inspect the
+   metadata, then `PATCH` its title and `DELETE` it.
+5. Confirm a final `GET /documents/{document_id}` returns `404` and the list
+   omits the deleted document.
+
 ## Implementation sequence
 
-1. [x] Define this contract (6.1).
-2. [x] Add storage configuration, the document model, status enum, migration,
-   and Docker volume (6.2).
-3. [x] Implement the storage adapter and repository boundaries (6.3).
-4. [x] Implement transactional document services and failure cleanup (6.4).
-5. [x] Add typed document schemas and RBAC-protected HTTP routes (6.5).
-6. [x] Add pagination, rename, and deletion behavior (6.6).
+1. [x] Define the document domain and lifecycle contract: allowed types, size
+   limits, statuses, ownership, and the definition of an uploaded document
+   (6.1).
+2. [x] Add a replaceable storage abstraction and the local Docker volume for
+   original bytes outside PostgreSQL (6.2).
+3. [x] Add the document database model and Alembic migration for durable
+   metadata, ownership, integrity data, lifecycle state, and timestamps (6.3).
+4. [x] Add repository and service layers so database and storage operations
+   remain transactional and testable outside HTTP routes (6.4).
+5. [x] Add the secure multipart upload endpoint with generated keys, streamed
+   limits, allowed content types, checksums, and safe filenames (6.5).
+6. [x] Add document management APIs to list, inspect, rename, and safely
+   delete documents (6.6).
 7. [x] Verify RBAC and ownership rules: enforce `documents:read` and
    `documents:write` consistently, and preserve `uploader_user_id` as
    provenance for future tenant and document-level policies (6.7).
-8. [ ] Run the complete tests, migration and Compose verification, then
-   consolidate user-facing documentation and manually test the authenticated
-   upload lifecycle (6.8).
+8. [x] Cover validation, storage cleanup, authorization, migrations, and the
+   complete Compose startup path; consolidate user-facing documentation and
+   provide the authenticated upload lifecycle check (6.8).
