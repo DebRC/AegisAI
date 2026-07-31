@@ -1,4 +1,6 @@
 import asyncio
+from datetime import datetime
+from datetime import timezone
 import io
 import unittest
 from types import SimpleNamespace
@@ -28,9 +30,11 @@ from app.core.exceptions import SystemRoleModificationError
 from app.core.exceptions import UserAlreadyExistsError
 from app.db import database
 from app.main import app
+from app.models import DocumentStatus
 from app.models import Role
 from app.schemas.auth import RegisterRequest
 from app.schemas.rbac import RoleCreateRequest
+from app.schemas.document import DocumentRenameRequest
 from app.security import dependencies
 from app.security.constants import TokenType
 from app.security.permissions import PermissionCode
@@ -147,6 +151,10 @@ class ApplicationTests(unittest.TestCase):
             {"AegisAI access token": []},
             document_paths["/documents/{document_id}"]["get"]["security"],
         )
+        self.assertIn(
+            {"OAuth2PasswordBearer": []},
+            document_paths["/documents/{document_id}"]["patch"]["security"],
+        )
 
     def test_basic_routes_and_lifespan(self) -> None:
         self.assertEqual(health_api.health(), {"status": "healthy"})
@@ -245,10 +253,28 @@ class ApplicationTests(unittest.TestCase):
             content_type="text/plain",
             file=io.BytesIO(b"policy"),
         )
-        document = SimpleNamespace(id=3)
+        now = datetime.now(timezone.utc)
+        document = SimpleNamespace(
+            id=3,
+            uploader_user_id=user.id,
+            title="Security policy",
+            original_filename="security-policy.txt",
+            content_type="text/plain",
+            size_bytes=6,
+            sha256="a" * 64,
+            status=DocumentStatus.PENDING,
+            created_at=now,
+            updated_at=now,
+        )
         service.upload.return_value = document
-        service.list_documents.return_value = [document]
+        service.list_documents.return_value = SimpleNamespace(
+            items=[document],
+            offset=0,
+            limit=25,
+            total=1,
+        )
         service.get_document.return_value = document
+        service.rename_document.return_value = document
 
         self.assertIs(
             documents_api.upload_document(upload, user, service),
@@ -259,8 +285,21 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(upload_arguments["original_filename"], "security-policy.txt")
         self.assertEqual(upload_arguments["content_type"], "text/plain")
         self.assertEqual(list(upload_arguments["chunks"]), [b"policy"])
-        self.assertEqual(documents_api.list_documents(service), [document])
+        page = documents_api.list_documents(0, 25, service)
+        self.assertEqual([item.id for item in page.items], [document.id])
+        self.assertEqual(page.items[0].title, document.title)
+        self.assertEqual(page.total, 1)
         self.assertIs(documents_api.get_document(3, service), document)
+        self.assertIs(
+            documents_api.rename_document(
+                3,
+                DocumentRenameRequest(title="Updated title"),
+                service,
+                user,
+            ),
+            document,
+        )
+        self.assertEqual(documents_api.delete_document(3, service, user).status_code, 204)
 
         service.upload.side_effect = DocumentValidationError()
         with self.assertRaises(HTTPException) as context:

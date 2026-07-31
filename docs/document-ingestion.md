@@ -173,13 +173,18 @@ JWT plus the documented permission.
 | Method | Path | Permission | Intended response |
 | --- | --- | --- | --- |
 | `POST` | `/documents` | `documents:write` | Accept multipart field `file`; return `201 Created` and document metadata. |
-| `GET` | `/documents` | `documents:read` | Return a bounded, paginated list of non-deleted document metadata. |
+| `GET` | `/documents?offset=0&limit=25` | `documents:read` | Return a bounded page of non-deleted metadata, including `items`, `offset`, `limit`, and `total`. The maximum limit is 100. |
 | `GET` | `/documents/{document_id}` | `documents:read` | Return one non-deleted document's metadata. |
 | `PATCH` | `/documents/{document_id}` | `documents:write` | Rename the document title only. |
 | `DELETE` | `/documents/{document_id}` | `documents:write` | Soft-delete metadata, remove the stored object, and return `204 No Content`. |
 
 Phase 6 intentionally has no raw-document download endpoint. Future access to
 content must be designed together with retrieval permissions and audit rules.
+
+Deletion commits the `deleted_at` marker before attempting filesystem cleanup.
+If cleanup fails, the metadata remains deleted and the original is an
+unreachable orphan pending future storage reconciliation; Phase 6 does not
+restore active metadata after its stored bytes may already have been removed.
 
 | Situation | Response |
 | --- | --- |
@@ -211,7 +216,7 @@ The later Phase 6 checkpoints must test:
 3. [x] Implement the storage adapter and repository boundaries (6.3).
 4. [x] Implement transactional document services and failure cleanup (6.4).
 5. [x] Add typed document schemas and RBAC-protected HTTP routes (6.5).
-6. [ ] Add pagination, rename, and deletion behavior (6.6).
+6. [x] Add pagination, rename, and deletion behavior (6.6).
 7. [ ] Verify authorization, file handling, migration behavior, and Docker
    startup (6.7).
 8. [ ] Consolidate user-facing documentation and manually test the full upload

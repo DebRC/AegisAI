@@ -1,4 +1,7 @@
 from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import datetime
+from datetime import timezone
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -10,6 +13,16 @@ from app.models.document import Document
 from app.repositories.document_repository import DocumentRepository
 from app.storage.documents import DocumentStorage
 from app.storage.documents import StoredDocument
+
+
+@dataclass(frozen=True)
+class DocumentPage:
+    """One bounded page of active document metadata."""
+
+    items: list[Document]
+    offset: int
+    limit: int
+    total: int
 
 
 class DocumentService:
@@ -65,9 +78,19 @@ class DocumentService:
             self._remove_stored_document(stored)
             raise DocumentPersistenceError() from error
 
-    def list_documents(self) -> list[Document]:
-        """Return the first bounded page of non-deleted document metadata."""
-        return self.documents.list_active(offset=0, limit=50)
+    def list_documents(self, *, offset: int, limit: int) -> DocumentPage:
+        """Return a bounded page of non-deleted document metadata."""
+        if not isinstance(offset, int) or offset < 0:
+            raise DocumentValidationError()
+        if not isinstance(limit, int) or not 1 <= limit <= 100:
+            raise DocumentValidationError()
+
+        return DocumentPage(
+            items=self.documents.list_active(offset=offset, limit=limit),
+            offset=offset,
+            limit=limit,
+            total=self.documents.count_active(),
+        )
 
     def get_document(self, document_id: int) -> Document:
         """Return non-deleted metadata or hide deleted records as not found."""
@@ -75,6 +98,34 @@ class DocumentService:
         if document is None:
             raise DocumentNotFoundError()
         return document
+
+    def rename_document(self, document_id: int, title: str) -> Document:
+        """Change only an active document's display title."""
+        normalized_title = self._validate_title(title)
+        document = self.get_document(document_id)
+        document.title = normalized_title
+
+        try:
+            self.documents.update()
+            self._commit()
+            return document
+        except Exception as error:
+            self.db.rollback()
+            raise DocumentPersistenceError() from error
+
+    def delete_document(self, document_id: int) -> None:
+        """Soft-delete metadata, then make a best-effort object cleanup attempt."""
+        document = self.get_document(document_id)
+        document.deleted_at = datetime.now(timezone.utc)
+
+        try:
+            self.documents.update()
+            self._commit()
+        except Exception as error:
+            self.db.rollback()
+            raise DocumentPersistenceError() from error
+
+        self._remove_stored_document(document.storage_key)
 
     def _commit(self) -> None:
         self.db.commit()
@@ -112,9 +163,20 @@ class DocumentService:
 
         return filename, normalized_content_type, title
 
-    def _remove_stored_document(self, stored: StoredDocument) -> None:
+    @staticmethod
+    def _validate_title(title: str) -> str:
+        if not isinstance(title, str):
+            raise DocumentValidationError()
+
+        normalized_title = title.strip()
+        if not normalized_title or len(normalized_title) > 255:
+            raise DocumentValidationError()
+        return normalized_title
+
+    def _remove_stored_document(self, stored: StoredDocument | str) -> None:
+        storage_key = stored.storage_key if isinstance(stored, StoredDocument) else stored
         try:
-            self.storage.delete(stored.storage_key)
+            self.storage.delete(storage_key)
         except Exception:
             # Database rollback prevents metadata visibility; cleanup remains best-effort.
             pass

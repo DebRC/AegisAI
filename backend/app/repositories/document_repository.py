@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -39,6 +40,13 @@ class DocumentRepository:
                 .limit(limit)
             )
         )
+
+    def count_active(self) -> int:
+        return self.db.scalar(
+            select(func.count())
+            .select_from(Document)
+            .where(Document.deleted_at.is_(None))
+        ) or 0
 
     def update(self) -> None:
         self.db.flush()

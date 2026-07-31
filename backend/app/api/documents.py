@@ -4,6 +4,8 @@ from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import File
 from fastapi import HTTPException
+from fastapi import Query
+from fastapi import Response
 from fastapi import UploadFile
 from fastapi import status
 
@@ -12,6 +14,8 @@ from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import DocumentPersistenceError
 from app.core.exceptions import DocumentValidationError
 from app.models.user import User
+from app.schemas.document import DocumentListResponse
+from app.schemas.document import DocumentRenameRequest
 from app.schemas.document import DocumentResponse
 from app.security.dependencies import require_permission
 from app.security.permissions import PermissionCode
@@ -86,13 +90,21 @@ def upload_document(
 
 @router.get(
     "",
-    response_model=list[DocumentResponse],
+    response_model=DocumentListResponse,
     dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
 )
 def list_documents(
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=100),
     service: DocumentService = Depends(get_document_service),
-) -> list[DocumentResponse]:
-    return service.list_documents()
+) -> DocumentListResponse:
+    page = service.list_documents(offset=offset, limit=limit)
+    return DocumentListResponse(
+        items=page.items,
+        offset=page.offset,
+        limit=page.limit,
+        total=page.total,
+    )
 
 
 @router.get(
@@ -108,3 +120,40 @@ def get_document(
         return service.get_document(document_id)
     except DocumentNotFoundError as error:
         raise _document_error_to_http_exception(error) from error
+
+
+@router.patch(
+    "/{document_id}",
+    response_model=DocumentResponse,
+)
+def rename_document(
+    document_id: int,
+    request: DocumentRenameRequest,
+    service: DocumentService = Depends(get_document_service),
+    _: User = Depends(require_permission(PermissionCode.DOCUMENTS_WRITE)),
+) -> DocumentResponse:
+    try:
+        return service.rename_document(document_id, request.title)
+    except (
+        DocumentValidationError,
+        DocumentNotFoundError,
+        DocumentPersistenceError,
+    ) as error:
+        raise _document_error_to_http_exception(error) from error
+
+
+@router.delete(
+    "/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_document(
+    document_id: int,
+    service: DocumentService = Depends(get_document_service),
+    _: User = Depends(require_permission(PermissionCode.DOCUMENTS_WRITE)),
+) -> Response:
+    try:
+        service.delete_document(document_id)
+    except (DocumentNotFoundError, DocumentPersistenceError) as error:
+        raise _document_error_to_http_exception(error) from error
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

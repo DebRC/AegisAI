@@ -87,6 +87,7 @@ class DocumentRepositoryTests(DatabaseTestCase, unittest.TestCase):
         self.assertIsNone(repository.get_active_by_id(deleted.id))
         self.assertEqual(repository.get_active_by_id(active.id), active)
         self.assertEqual(repository.list_active(offset=0, limit=10), [active])
+        self.assertEqual(repository.count_active(), 1)
 
     def _document(self, suffix: str) -> Document:
         return Document(
@@ -241,14 +242,57 @@ class DocumentServiceTests(DatabaseTestCase, unittest.TestCase):
 
     def test_list_and_get_return_only_active_document_metadata(self) -> None:
         service = DocumentService(self.session, self.storage)
-        document = service.upload(
-            uploader_user_id=self.user.id,
-            original_filename="security-policy.txt",
-            content_type="text/plain",
-            chunks=[b"policy"],
-        )
+        first = self._upload(service, "first.txt")
+        second = self._upload(service, "second.txt")
+        third = self._upload(service, "third.txt")
 
-        self.assertEqual(service.list_documents(), [document])
-        self.assertEqual(service.get_document(document.id), document)
+        first_page = service.list_documents(offset=0, limit=2)
+        second_page = service.list_documents(offset=2, limit=2)
+
+        self.assertEqual(first_page.items, [third, second])
+        self.assertEqual(first_page.total, 3)
+        self.assertEqual(second_page.items, [first])
+        self.assertEqual(second_page.offset, 2)
         with self.assertRaises(DocumentNotFoundError):
             service.get_document(9999)
+
+    def test_rename_and_delete_update_visibility_and_storage(self) -> None:
+        service = DocumentService(self.session, self.storage)
+        document = self._upload(service, "security-policy.txt")
+        stored_path = self.root_path / document.storage_key
+
+        renamed = service.rename_document(document.id, " Updated policy ")
+        service.delete_document(document.id)
+
+        self.assertEqual(renamed.title, "Updated policy")
+        self.assertIsNotNone(document.deleted_at)
+        self.assertFalse(stored_path.exists())
+        self.assertEqual(service.list_documents(offset=0, limit=25).items, [])
+        with self.assertRaises(DocumentNotFoundError):
+            service.get_document(document.id)
+
+    def test_delete_hides_metadata_when_best_effort_storage_cleanup_fails(self) -> None:
+        service = DocumentService(self.session, self.storage)
+        document = self._upload(service, "security-policy.txt")
+
+        with patch.object(service.storage, "delete", side_effect=DocumentStorageError()):
+            service.delete_document(document.id)
+
+        self.assertIsNotNone(document.deleted_at)
+        with self.assertRaises(DocumentNotFoundError):
+            service.get_document(document.id)
+
+    def test_rename_rejects_blank_title(self) -> None:
+        service = DocumentService(self.session, self.storage)
+        document = self._upload(service, "security-policy.txt")
+
+        with self.assertRaises(DocumentValidationError):
+            service.rename_document(document.id, "  ")
+
+    def _upload(self, service: DocumentService, filename: str) -> Document:
+        return service.upload(
+            uploader_user_id=self.user.id,
+            original_filename=filename,
+            content_type="text/plain",
+            chunks=[filename.encode()],
+        )
