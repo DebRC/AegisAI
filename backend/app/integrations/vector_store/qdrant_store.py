@@ -152,6 +152,10 @@ class QdrantVectorStore:
             raise VectorStoreOperationError("Document vectors could not be removed.") from error
         return len(normalized_point_ids)
 
+    def close(self) -> None:
+        """Release the worker-scoped client created for this store."""
+        self._client.close()
+
     def _create_collection_if_absent(self) -> None:
         try:
             self._client.create_collection(

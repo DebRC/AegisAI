@@ -113,18 +113,19 @@ content_type, embedding_provider, embedding_model
 
 The boundary accepts caller-supplied UUID point IDs, validates finite vectors
 against the configured dimension, waits for Qdrant upsert/delete completion,
-and exposes only safe operation errors. The Phase 9.6 worker will supply the
-deterministic IDs and invoke these operations.
+and exposes only safe operation errors. The Phase 9.6 worker supplies the
+deterministic IDs and invokes these operations.
 
 The provider name, model, collection name, dimension, request timeout, and
-batch limits are validated environment settings. `QDRANT_API_KEY` and
-`OPENAI_API_KEY` are optional secret settings: they remain empty for the local
-Docker Qdrant service and until an embedding worker is explicitly enabled. No
-secret is introduced by version control.
+batch limits are validated environment settings. `QDRANT_API_KEY` remains empty
+for the local Docker Qdrant service. `OPENAI_API_KEY` must be set in the local
+uncommitted `backend/.env` before an indexing worker can generate real vectors;
+without it, the durable job fails safely and remains retryable. No secret is
+introduced by version control.
 
 ## Identity and idempotency
 
-The service will derive a stable Qdrant point UUID from the embedding identity
+The service derives a stable Qdrant point UUID from the embedding identity
 (chunk ID, provider, model, and collection). It will persist that UUID before
 claiming an indexing run and use Qdrant upsert semantics. Repeating the same
 job therefore writes the same logical point rather than accumulating another
@@ -165,7 +166,7 @@ a vector-search endpoint.
 
 Embedding providers and Qdrant are external systems, so a PostgreSQL commit and
 a vector upsert cannot form one shared database transaction. The implementation
-will use this recovery sequence:
+uses this recovery sequence:
 
 1. Claim one durable indexing job through the existing PostgreSQL job rules.
 2. Read only the current extraction and chunks; cancel if the document was
@@ -201,7 +202,7 @@ any user can receive semantic search results or citations.
 - [x] 9.3 Embedding persistence and migration
 - [x] 9.4 Embedding-provider abstraction
 - [x] 9.5 Qdrant collection and vector operations
-- [ ] 9.6 Background indexing pipeline
+- [x] 9.6 Background indexing pipeline
 - [ ] 9.7 Reprocessing, idempotency, and cleanup
 - [ ] 9.8 Status visibility and authorization
 - [ ] 9.9 Tests, Docker verification, and documentation

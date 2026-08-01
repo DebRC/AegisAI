@@ -5,7 +5,7 @@ from app.extraction.base import ExtractedText, ExtractedTextBlock, SourceLocatio
 from app.extraction.exceptions import NoExtractableTextError
 from app.extraction.processing import TextChunker, TextNormalizer
 from app.extraction.registry import TextExtractorRegistry
-from app.models import Document, DocumentChunk, DocumentExtraction, DocumentStatus, ProcessingJobStatus
+from app.models import Document, DocumentChunk, DocumentExtraction, DocumentStatus, ProcessingJob, ProcessingJobStatus
 from app.services.processing_job_service import ProcessingJobService
 from app.services.text_extraction_service import TextExtractionService
 from tests.helpers import DatabaseTestCase
@@ -69,6 +69,11 @@ class TextExtractionServiceTests(DatabaseTestCase, unittest.TestCase):
         self.assertEqual(extraction.normalized_text, "First paragraph.\n\nSecond paragraph.")
         self.assertEqual(extraction.chunks[0].source_locations, [{"kind": "page", "index": 1}])
         self.assertTrue(all(chunk.content_sha256 for chunk in extraction.chunks))
+        embedding_job = self.session.query(ProcessingJob).filter_by(
+            document_id=self.document.id,
+            job_type=ProcessingJobService.EMBEDDING_INDEXING_JOB_TYPE,
+        ).one()
+        self.assertEqual(embedding_job.status, ProcessingJobStatus.QUEUED)
 
     def test_process_fails_safely_without_persisting_partial_output(self) -> None:
         job = self._queued_text_job()

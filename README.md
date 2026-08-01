@@ -17,10 +17,10 @@ The backend foundation, document-ingestion boundary, background-processing runti
 | Document ingestion | Available | RBAC-protected upload, metadata management, local persistent original-file storage, SHA-256 integrity metadata, and soft deletion. |
 | Background processing | Available | Redis/Celery workers verify durable uploaded sources outside HTTP requests, with PostgreSQL-backed job state, retries, cancellation, and failure handling. |
 | Knowledge processing | Available | Workers safely extract supported files, normalize text, create deterministic chunks, and persist traceable output for later embedding. |
-| Vector indexing | In progress | Validated OpenAI embedding boundary, Qdrant collection contract, and traceable vector records; worker indexing follows. |
+| Vector indexing | In progress | Workers queue and process OpenAI embeddings into validated Qdrant collections with traceable PostgreSQL records. |
 | Retrieval and RAG | Planned | Retrieval, citations, and RAG chat. |
 
-Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; Phase 9.6 will begin automatic indexing of document vectors in Qdrant.
+Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; Phase 9.6 automatically indexes document vectors after extraction when `OPENAI_API_KEY` is configured.
 
 ### Technology
 
@@ -42,7 +42,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 6 — Document ingestion | Complete | Secure local storage, upload validation, metadata lifecycle, RBAC enforcement, and document-management APIs. |
 | Phase 7 — Background processing | Complete | Redis/Celery runtime, durable outbox delivery, worker integrity checks, job status, retry, and cancellation. |
 | Phase 8 — Text extraction and chunking | Complete | Safe TXT/Markdown/PDF/DOCX extraction, normalized traceable chunks, worker lifecycle, reprocessing, and RBAC-protected inspection APIs. |
-| Phase 9 — Embeddings and Qdrant indexing | In progress | Contract, provider boundary, collection safety, and traceable vector records are ready; worker indexing follows. |
+| Phase 9 — Embeddings and Qdrant indexing | In progress | Contract, provider boundary, collection safety, durable worker indexing, and traceable vector records are ready; cleanup and status refinements follow. |
 | Phases 10–12 — Retrieval and RAG | Planned | Metadata-filtered retrieval, streaming chat with citations, and permission-aware retrieval. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
