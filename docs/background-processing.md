@@ -66,13 +66,17 @@ if Redis cannot accept the message after the database commit, the event remains
 in PostgreSQL and the dispatcher can publish it later. Uploads are therefore
 not lost merely because the broker is briefly unavailable.
 
-Redis is the development message broker and result backend. Docker Compose will
-run three distinct application processes from the same backend image:
+Redis is the development message broker and result backend. Docker Compose runs
+three distinct application processes from the same backend image:
 
 - FastAPI accepts HTTP requests.
 - Celery Beat periodically dispatches unpublished outbox events.
 - Celery workers execute published jobs and mount the same persistent document
   volume as FastAPI.
+
+Redis has no public host port and holds no authoritative business data. Its
+queue contents and short-lived task results may be lost during development;
+the PostgreSQL outbox lets the dispatcher republish durable work afterward.
 
 ## State model
 
