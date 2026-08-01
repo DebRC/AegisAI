@@ -120,6 +120,12 @@ finished timestamps, and a bounded safe failure message. Worker tracebacks
 belong in logs only; API responses expose neither exception classes nor storage
 paths.
 
+Each job also has one or more durable outbox events. An event records the
+immutable message payload, publication attempts, next eligible publication
+time, a temporary claim timestamp, broker task identifier, and safe broker
+error. Its delivery states are `PENDING`, `PUBLISHING`, `PUBLISHED`, and
+`CANCELLED`; these states are separate from worker execution.
+
 ## Reliability and idempotency rules
 
 - The database is the source of truth for jobs. Redis transports messages but

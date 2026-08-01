@@ -90,3 +90,7 @@ class Document(Base):
     uploader: Mapped["User"] = relationship(
         back_populates="uploaded_documents",
     )
+
+    processing_jobs: Mapped[list["ProcessingJob"]] = relationship(
+        back_populates="document",
+    )
