@@ -2,7 +2,7 @@
 
 AegisAI is a secure, enterprise-oriented knowledge platform in development. It is being built to let organizations ingest internal content, retrieve it safely, and eventually chat with it through a permission-aware RAG experience.
 
-The backend foundation, document-ingestion boundary, and background-processing runtime are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, secure document management, and Redis/Celery workers. Text extraction and chunking are now underway; embeddings, retrieval, and chat follow.
+The backend foundation, document-ingestion boundary, background-processing runtime, and text-processing pipeline are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, secure document management, Redis/Celery workers, and traceable extracted text/chunks. Embeddings, retrieval, and chat follow.
 
 ## Overview
 
@@ -16,7 +16,7 @@ The backend foundation, document-ingestion boundary, and background-processing r
 | Enterprise SSO | Available | Google OpenID Connect, GitHub OAuth, and Microsoft Entra ID adapters with PKCE, signed state, nonce validation, account linking, and local AegisAI sessions. |
 | Document ingestion | Available | RBAC-protected upload, metadata management, local persistent original-file storage, SHA-256 integrity metadata, and soft deletion. |
 | Background processing | Available | Redis/Celery workers verify durable uploaded sources outside HTTP requests, with PostgreSQL-backed job state, retries, cancellation, and failure handling. |
-| Knowledge processing | In progress | Phase 8 defines the secure text-extraction and chunking contract; implementation is next. |
+| Knowledge processing | Available | Workers safely extract supported files, normalize text, create deterministic chunks, and persist traceable output for later embedding. |
 | Retrieval and RAG | Planned | Embeddings, Qdrant indexing, retrieval, citations, and RAG chat. |
 
 Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; it does not yet store vectors in Qdrant.
@@ -40,7 +40,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phases 1–5 — Foundation, data, identity, and access control | Complete | Containerized backend, migrations, local authentication, RBAC, and enterprise SSO. |
 | Phase 6 — Document ingestion | Complete | Secure local storage, upload validation, metadata lifecycle, RBAC enforcement, and document-management APIs. |
 | Phase 7 — Background processing | Complete | Redis/Celery runtime, durable outbox delivery, worker integrity checks, job status, retry, and cancellation. |
-| Phase 8 — Text extraction and chunking | In progress | Extraction and chunking contract defined; implementation underway. |
+| Phase 8 — Text extraction and chunking | Complete | Safe TXT/Markdown/PDF/DOCX extraction, normalized traceable chunks, worker lifecycle, reprocessing, and RBAC-protected inspection APIs. |
 | Phases 9–12 — Retrieval and RAG | Planned | Embeddings, vector indexing, metadata filtering, streaming chat, citations, and permission-aware retrieval. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
@@ -50,7 +50,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [RBAC design](docs/rbac.md) explains the current role and permission model.
 - [Document ingestion design](docs/document-ingestion.md) defines the implemented Phase 6 storage, lifecycle, authorization, and API contract.
 - [Background processing design](docs/background-processing.md) defines the implemented Phase 7 job, outbox, worker, and retry contract.
-- [Text extraction and chunking design](docs/text-extraction-and-chunking.md) defines the Phase 8 supported-format, lifecycle, traceability, and safety contract.
+- [Text extraction and chunking design](docs/text-extraction-and-chunking.md) defines the implemented Phase 8 format, lifecycle, traceability, safety, and manual-verification contract.
 
 ## Architecture
 
@@ -83,11 +83,17 @@ or refresh   Google | GitHub | Entra                         dependency
                              external_identities
                              roles / permissions
 
+Documents ──► PostgreSQL outbox ──► Redis ──► Celery workers
+                                           │
+                                           ▼
+                         source integrity ──► extraction and chunks
+                                           │
+                                           ▼
+                              PostgreSQL extraction/chunk records
+
                                   Planned next
 
- Documents ──► workers ──► extraction/chunking ──► embeddings ──► Qdrant
-                                                                     │
-                                             permission-aware retrieval + RAG chat
+                     embeddings ──► Qdrant ──► permission-aware retrieval + RAG chat
 ```
 
 The backend follows a layered design so that HTTP, business rules, and persistence remain independently testable:
@@ -266,6 +272,11 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | `POST` | `/documents` | Upload an allowed document with `documents:write`. |
 | `GET` | `/documents?offset=0&limit=25` | List document metadata with `documents:read`. |
 | `GET`, `PATCH`, `DELETE` | `/documents/{document_id}` | Inspect with `documents:read`; rename or delete with `documents:write`. |
+| `GET` | `/documents/{document_id}/processing-jobs` | Inspect safe job history with `documents:read`. |
+| `POST` | `/documents/{document_id}/processing-jobs/{job_id}/retry` | Requeue one failed job with `documents:write`. |
+| `GET` | `/documents/{document_id}/extraction` | Inspect safe extraction metadata with `documents:read`. |
+| `GET` | `/documents/{document_id}/extraction/chunks` | Inspect ordered, paginated chunks with `documents:read`. |
+| `POST` | `/documents/{document_id}/reprocess` | Queue replacement extraction with `documents:write`; returns `202 Accepted`. |
 
 ### Local login and token use
 
@@ -291,6 +302,13 @@ Document reads and writes use the existing global `documents:read` and
 tenant and resource policies, not a current per-document access rule. See the
 [document ingestion design](docs/document-ingestion.md) for the complete API,
 lifecycle, and storage behavior.
+
+After an upload, the durable outbox sends source validation and then text
+extraction to the worker. A successful extraction makes the document `READY`.
+Readers can inspect only extraction metadata and bounded chunk pages; original
+storage keys, broker identifiers, and parser errors stay internal. See the
+[text extraction and chunking design](docs/text-extraction-and-chunking.md)
+for the lifecycle and a manual verification walkthrough.
 
 ### Browser SSO and Swagger
 
@@ -350,7 +368,7 @@ cd backend
 venv/bin/python -m unittest discover -s tests -v
 ```
 
-The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, Swagger security schemes, migrations, and application startup.
+The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, document cleanup, background-job state, extraction, chunking, reprocessing, Swagger security schemes, migrations, and application startup.
 
 The Dockerfile runs this suite during image build and produces the complete Alembic upgrade SQL. Compose runs the suite again before applying migrations and launching the API.
 
@@ -366,7 +384,7 @@ venv/bin/alembic upgrade head
 venv/bin/alembic current
 ```
 
-Review every generated migration before applying it, particularly constraint and index changes. The current migration chain creates users, refresh tokens, RBAC tables and seeded permissions, the `administrator` system role, and external-identity bindings.
+Review every generated migration before applying it, particularly constraint and index changes. The current migration chain creates users, refresh tokens, RBAC tables and seeded permissions, the `administrator` system role, external-identity bindings, documents, processing/outbox records, and extraction/chunk records.
 
 When running Alembic from the host, use a database URL reachable from the host—normally `localhost`, not Compose's internal `postgres` hostname. `ALEMBIC_DATABASE_URL` can override the configured database URL for that command.
 
@@ -406,16 +424,15 @@ When running Alembic from the host, use a database URL reachable from the host�
 
 The next implementation milestones are:
 
-1. **Phase 8:** text extraction and chunking.
-2. **Phase 9:** embeddings and Qdrant indexing.
-3. **Phase 10:** retrieval and metadata filtering.
-4. **Phase 11:** RAG chat, streaming, and citations.
-5. **Phase 12:** permission-aware retrieval.
-6. **Phase 13:** audit logging.
-7. **Phase 14:** administration dashboard.
-8. **Phase 15:** Next.js frontend.
-9. **Phase 16:** observability.
-10. **Phase 17:** CI/CD.
-11. **Phase 18:** Kubernetes.
-12. **Phase 19:** multi-tenancy.
-13. **Phase 20:** enterprise API keys, rate limits, and retention policies.
+1. **Phase 9:** embeddings and Qdrant indexing.
+2. **Phase 10:** retrieval and metadata filtering.
+3. **Phase 11:** RAG chat, streaming, and citations.
+4. **Phase 12:** permission-aware retrieval.
+5. **Phase 13:** audit logging.
+6. **Phase 14:** administration dashboard.
+7. **Phase 15:** Next.js frontend.
+8. **Phase 16:** observability.
+9. **Phase 17:** CI/CD.
+10. **Phase 18:** Kubernetes.
+11. **Phase 19:** multi-tenancy.
+12. **Phase 20:** enterprise API keys, rate limits, and retention policies.

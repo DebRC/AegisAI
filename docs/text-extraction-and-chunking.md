@@ -7,10 +7,9 @@ and ordered chunks that later phases can embed, retrieve, and cite. It extends
 the Phase 7 background-processing foundation; it does not generate embeddings,
 write vectors to Qdrant, rank results, or answer chat questions.
 
-This document is the contract for the Phase 8 model, migration, extractors,
-worker tasks, services, APIs, tests, and documentation. It is intentionally
-defined before parser code so every supported format has the same lifecycle and
-failure guarantees.
+This document is the design and operating reference for the Phase 8 model,
+migration, extractors, worker tasks, services, APIs, tests, and documentation.
+Every supported format follows the same lifecycle and failure guarantees.
 
 ## Completion criteria
 
@@ -61,12 +60,11 @@ Extractors treat every source as untrusted data:
 - They enforce a bounded extracted-text size before persistence, protecting the
   worker and PostgreSQL from expansion-heavy files such as decompression bombs.
 
-Checkpoint 8.2 will add explicit settings for the maximum extracted text and
-the chunk target/overlap. The initial implementation will use a 5,000,000
-character extracted-text limit, a 1,200-character target chunk size, and a
-200-character overlap. These values are model-neutral defaults, not a promise
-about any embedding model's token limit; Phase 9 will validate the selected
-embedding model's actual token constraints.
+Configuration uses a 5,000,000-character extracted-text limit, a
+1,200-character target chunk size, and a 200-character overlap. These values
+are model-neutral defaults, not a promise about any embedding model's token
+limit; Phase 9 will validate the selected embedding model's actual token
+constraints.
 
 ## Processing lifecycle
 
@@ -109,9 +107,8 @@ never extracted, even if an older broker message is delivered late.
 
 ## Extraction result and traceability contract
 
-Phase 8 will persist one current extraction result per active document and its
-ordered chunks. The migration in checkpoint 8.3 will represent the following
-logical fields:
+Phase 8 persists one current extraction result per active document and its
+ordered chunks. The migration represents the following logical fields:
 
 | Record | Required information | Purpose |
 | --- | --- | --- |
@@ -167,9 +164,11 @@ use bounded messages such as:
 Phase 7's job claim makes duplicate message delivery a no-op after completion.
 For a failed extraction, the existing authorized job retry mechanism returns
 the job to `QUEUED`; a later worker attempt replaces results only after it has
-produced a complete valid extraction. A reprocess request for a `READY`
-document will be designed as an explicit document-write operation in checkpoint
-8.7. It never mutates original source metadata or bypasses the outbox.
+produced a complete valid extraction. `POST /documents/{document_id}/reprocess`
+is an explicit document-write operation for an active `READY` document. It
+returns `202 Accepted` with a queued text-extraction job, retains the current
+result until replacement succeeds, and never mutates original source metadata
+or bypasses the outbox.
 
 ## Authorization and API boundary
 
@@ -181,11 +180,49 @@ permission-aware retrieval:
 | Inspect extraction status, text metadata, and chunks | `documents:read` |
 | Retry failed extraction or request reprocessing | `documents:write` |
 
-The Phase 8 read API will be document-scoped. It will expose extraction and
-chunk data needed to verify traceability, but no storage key, outbox payload,
-broker task ID, parser exception, or raw stack trace. It is not a semantic
-search endpoint and does not relax the current global document authorization
-model.
+The document-scoped API exposes extraction/chunk data needed to verify
+traceability, but no storage key, outbox payload, broker task ID, parser
+exception, or raw stack trace. It is not a semantic-search endpoint and does
+not relax the current global document authorization model.
+
+| Method | Path | Permission | Result |
+| --- | --- | --- | --- |
+| `GET` | `/documents/{document_id}/extraction` | `documents:read` | Current extraction metadata, without normalized full text or checksum. |
+| `GET` | `/documents/{document_id}/extraction/chunks?offset=0&limit=25` | `documents:read` | Ordered chunks with normalized-text offsets and available source locations. |
+| `POST` | `/documents/{document_id}/reprocess` | `documents:write` | A `202 Accepted` queued replacement extraction job. |
+
+## Manual verification
+
+1. Start the full stack from the repository root with
+   `docker compose up --build --force-recreate`.
+2. Open `http://localhost:8000/docs`, choose **Authorize**, select **AegisAI
+   access token**, and paste an administrator's raw access JWT. An
+   administrator has both required document permissions.
+3. Use `POST /documents` to upload a small UTF-8 `.txt` file containing two or
+   more paragraphs. Save its `id` from the `201 Created` response.
+4. Call `GET /documents/{document_id}/processing-jobs` until the source job
+   and `text_extraction` job both show `succeeded`. The document returned by
+   `GET /documents/{document_id}` should then have status `ready`.
+5. Call `GET /documents/{document_id}/extraction` and then
+   `GET /documents/{document_id}/extraction/chunks`. Check that chunk ordinals
+   start at zero, offsets are increasing, and no storage or broker internals
+   are present.
+6. Call `POST /documents/{document_id}/reprocess`. It returns `202` and a
+   queued `text_extraction` job. Calling it again before that job finishes
+   returns `409`; once it succeeds, the extraction endpoint still represents
+   one current result rather than duplicated chunks.
+
+Use `POST /documents/{document_id}/processing-jobs/{job_id}/retry` only for a
+failed job. It is not a general reprocess action.
+
+## Verification coverage
+
+The unit suite covers extraction adapters, UTF-8 and parser failures, limits,
+normalization, deterministic chunk ranges/source locations, worker lifecycle,
+atomic result replacement, deleted-document cancellation, authorization route
+guards, output pagination, reprocess conflicts, and migration metadata. The
+Docker build runs the complete suite with the real PDF and DOCX dependencies
+and generates the complete Alembic upgrade SQL before Compose startup.
 
 ## Delivery checklist
 
@@ -198,4 +235,4 @@ model.
 6. [x] Run extraction in the worker with atomic persistence and reprocessing
    semantics (8.6).
 7. [x] Add authorized status, chunk-inspection, and reprocess APIs (8.7).
-8. [ ] Complete tests, Docker verification, and consolidated documentation (8.8).
+8. [x] Complete tests, Docker verification, and consolidated documentation (8.8).
