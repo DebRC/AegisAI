@@ -215,6 +215,8 @@ Copy [backend/.env.example](backend/.env.example) to `backend/.env`. Do not comm
 | `QDRANT_URL` | Qdrant service URL. It is provisioned now for the later retrieval pipeline. |
 | `DOCUMENT_STORAGE_PATH` | Local original-document storage path. Compose mounts the persistent `document_data` volume at this path. |
 | `DOCUMENT_MAX_UPLOAD_BYTES` | Maximum streamed upload size. The default is 25 MiB and is enforced by the upload service. |
+| `DOCUMENT_MAX_EXTRACTED_TEXT_CHARACTERS` | Maximum parser output retained from one document; default 5,000,000 characters. |
+| `DOCUMENT_CHUNK_TARGET_CHARACTERS`, `DOCUMENT_CHUNK_OVERLAP_CHARACTERS` | Model-neutral Phase 8 chunking defaults: 1,200 target characters with 200 characters of context overlap. |
 | `JWT_SECRET_KEY` | Long, unique secret used to sign AegisAI access and refresh JWTs. |
 | `JWT_ALGORITHM` | JWT signing algorithm; the supplied configuration uses `HS256`. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS` | Local token lifetimes. |

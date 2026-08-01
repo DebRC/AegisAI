@@ -191,7 +191,7 @@ model.
 
 1. [x] Define the supported-format, lifecycle, traceability, resource-limit,
    failure, retry, and authorization contract (8.1).
-2. [ ] Add extraction adapters, dependencies, and configuration defaults (8.2).
+2. [x] Add extraction adapters, dependencies, and configuration defaults (8.2).
 3. [ ] Add extraction-result and chunk models with an Alembic migration (8.3).
 4. [ ] Queue and dispatch the durable text-extraction pipeline stage (8.4).
 5. [ ] Implement cleaning and deterministic chunking (8.5).
