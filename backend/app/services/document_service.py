@@ -11,6 +11,7 @@ from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import DocumentValidationError
 from app.models.document import Document
 from app.repositories.document_repository import DocumentRepository
+from app.services.processing_job_service import ProcessingJobService
 from app.storage.documents import DocumentStorage
 from app.storage.documents import StoredDocument
 
@@ -41,6 +42,7 @@ class DocumentService:
     def __init__(self, db: Session, storage: DocumentStorage):
         self.db = db
         self.documents = DocumentRepository(db)
+        self.processing_jobs = ProcessingJobService(db)
         self.storage = storage
 
     def upload(
@@ -71,6 +73,7 @@ class DocumentService:
                     storage_key=stored.storage_key,
                 )
             )
+            self.processing_jobs.create_source_integrity_job(document_id=document.id)
             self._commit()
             return document
         except Exception as error:
@@ -116,9 +119,10 @@ class DocumentService:
     def delete_document(self, document_id: int) -> None:
         """Soft-delete metadata, then make a best-effort object cleanup attempt."""
         document = self.get_document(document_id)
-        document.deleted_at = datetime.now(timezone.utc)
 
         try:
+            self.processing_jobs.cancel_document_jobs(document_id=document.id)
+            document.deleted_at = datetime.now(timezone.utc)
             self.documents.update()
             self._commit()
         except Exception as error:
