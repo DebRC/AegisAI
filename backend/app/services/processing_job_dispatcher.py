@@ -8,7 +8,7 @@ from app.core.exceptions import ProcessingJobPersistenceError
 from app.repositories.processing_job_repository import ProcessingJobRepository
 from app.repositories.processing_outbox_event_repository import ProcessingOutboxEventRepository
 
-PublishJob = Callable[[int], str]
+PublishJob = Callable[[str, int], str]
 
 
 @dataclass(frozen=True)
@@ -40,17 +40,18 @@ class ProcessingJobDispatcher:
             event = self.events.get_by_id(event_id)
             if event is None:
                 continue
+            job = self.jobs.get_by_id(event.processing_job_id)
+            if job is None:
+                continue
             try:
-                task_id = self.publish_job(event.processing_job_id)
+                task_id = self.publish_job(job.job_type, job.id)
             except Exception:
                 self.events.reschedule_after_failure(event_id=event.id, available_at=timestamp + timedelta(seconds=self._retry_delay(event.publish_attempt_count)), safe_error=self.SAFE_BROKER_ERROR)
                 self._commit()
                 deferred += 1
                 continue
             self.events.mark_published(event_id=event.id, broker_task_id=task_id, now=timestamp)
-            job = self.jobs.get_by_id(event.processing_job_id)
-            if job is not None:
-                job.broker_task_id = task_id
+            job.broker_task_id = task_id
             self._commit()
             published += 1
         return DispatchSummary(published=published, deferred=deferred)

@@ -40,6 +40,32 @@ class ProcessingJobTests(DatabaseTestCase, unittest.TestCase):
         self.assertEqual(completed.status, ProcessingJobStatus.SUCCEEDED)
         self.assertEqual(completed.attempt_count, 1)
 
+    def test_source_success_atomically_queues_text_extraction(self) -> None:
+        service = ProcessingJobService(self.session)
+        source_job = service.create_source_integrity_job(
+            document_id=self.document.id,
+            now=self.now,
+        )
+        self.session.commit()
+        self.assertTrue(
+            service.claim_job(
+                job_id=source_job.id,
+                now=self.now,
+                expected_job_type=ProcessingJobService.SOURCE_INTEGRITY_JOB_TYPE,
+            ).claimed
+        )
+
+        extraction_job = service.complete_source_integrity_job(
+            job_id=source_job.id,
+            now=self.now,
+        )
+
+        self.assertEqual(source_job.status, ProcessingJobStatus.SUCCEEDED)
+        self.assertEqual(extraction_job.job_type, ProcessingJobService.TEXT_EXTRACTION_JOB_TYPE)
+        self.assertEqual(extraction_job.status, ProcessingJobStatus.QUEUED)
+        self.assertEqual(extraction_job.outbox_events[0].status, ProcessingOutboxEventStatus.PENDING)
+        self.assertEqual(extraction_job.document_id, self.document.id)
+
     def test_failure_retry_and_cancellation(self) -> None:
         service = ProcessingJobService(self.session)
         job = service.create_source_integrity_job(document_id=self.document.id, now=self.now)
@@ -60,15 +86,34 @@ class ProcessingJobTests(DatabaseTestCase, unittest.TestCase):
     def test_dispatcher_marks_success_and_reschedules_broker_failure(self) -> None:
         service = ProcessingJobService(self.session)
         success_job = service.create_source_integrity_job(document_id=self.document.id, now=self.now)
+        extraction_job = service.create_text_extraction_job(
+            document_id=self.document.id,
+            now=self.now,
+        )
         self.session.commit()
-        dispatcher = ProcessingJobDispatcher(self.session, lambda job_id: f"task-{job_id}")
+        dispatched: list[tuple[str, int]] = []
+        dispatcher = ProcessingJobDispatcher(
+            self.session,
+            lambda job_type, job_id: dispatched.append((job_type, job_id)) or f"task-{job_id}",
+        )
         summary = dispatcher.dispatch_pending(now=self.now)
-        self.assertEqual((summary.published, summary.deferred), (1, 0))
+        self.assertEqual((summary.published, summary.deferred), (2, 0))
         self.assertEqual(success_job.outbox_events[0].status, ProcessingOutboxEventStatus.PUBLISHED)
+        self.assertEqual(extraction_job.outbox_events[0].status, ProcessingOutboxEventStatus.PUBLISHED)
+        self.assertEqual(
+            dispatched,
+            [
+                (ProcessingJobService.SOURCE_INTEGRITY_JOB_TYPE, success_job.id),
+                (ProcessingJobService.TEXT_EXTRACTION_JOB_TYPE, extraction_job.id),
+            ],
+        )
 
         failed_job = service.create_source_integrity_job(document_id=self.document.id, now=self.now)
         self.session.commit()
-        failing_dispatcher = ProcessingJobDispatcher(self.session, lambda _: (_ for _ in ()).throw(RuntimeError()))
+        failing_dispatcher = ProcessingJobDispatcher(
+            self.session,
+            lambda _job_type, _job_id: (_ for _ in ()).throw(RuntimeError()),
+        )
         summary = failing_dispatcher.dispatch_pending(now=self.now)
         self.assertEqual((summary.published, summary.deferred), (0, 1))
         event = failed_job.outbox_events[0]

@@ -1,13 +1,19 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 
 from sqlalchemy.orm import Session
 
+from app.extraction.processing import NormalizedText
+from app.extraction.processing import TextChunk
 from app.core.exceptions import DocumentNotFoundError, ProcessingJobNotFoundError, ProcessingJobPersistenceError, ProcessingJobStateError
 from app.models.document import DocumentStatus
+from app.models.document_extraction import DocumentChunk
+from app.models.document_extraction import DocumentExtraction
 from app.models.processing_job import ProcessingJob, ProcessingJobStatus
 from app.models.processing_outbox_event import ProcessingOutboxEvent
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.document_extraction_repository import DocumentExtractionRepository
 from app.repositories.processing_job_repository import ProcessingJobRepository
 from app.repositories.processing_outbox_event_repository import ProcessingOutboxEventRepository
 
@@ -21,12 +27,15 @@ class JobClaim:
 class ProcessingJobService:
     """Coordinate durable job and outbox state with explicit transactions."""
 
-    JOB_TYPE = "source_integrity"
+    SOURCE_INTEGRITY_JOB_TYPE = "source_integrity"
+    TEXT_EXTRACTION_JOB_TYPE = "text_extraction"
     EVENT_TYPE = "processing_job.queued"
+    EXTRACTION_VERSION = "phase8-v1"
 
     def __init__(self, db: Session):
         self.db = db
         self.documents = DocumentRepository(db)
+        self.extractions = DocumentExtractionRepository(db)
         self.jobs = ProcessingJobRepository(db)
         self.outbox_events = ProcessingOutboxEventRepository(db)
 
@@ -36,9 +45,54 @@ class ProcessingJobService:
         if document is None:
             raise DocumentNotFoundError()
         timestamp = now or self._now()
-        job = self.jobs.create(ProcessingJob(document_id=document.id, job_type=self.JOB_TYPE, queued_at=timestamp))
-        self.outbox_events.create(ProcessingOutboxEvent(processing_job_id=job.id, event_type=self.EVENT_TYPE, payload={"processing_job_id": job.id}, available_at=timestamp))
-        return job
+        return self._create_queued_job(
+            document_id=document.id,
+            job_type=self.SOURCE_INTEGRITY_JOB_TYPE,
+            timestamp=timestamp,
+        )
+
+    def create_text_extraction_job(self, *, document_id: int, now: datetime | None = None) -> ProcessingJob:
+        """Create the next durable pipeline stage and leave the caller to commit."""
+        document = self.documents.get_active_by_id(document_id)
+        if document is None:
+            raise DocumentNotFoundError()
+        return self._create_queued_job(
+            document_id=document.id,
+            job_type=self.TEXT_EXTRACTION_JOB_TYPE,
+            timestamp=now or self._now(),
+        )
+
+    def request_text_reprocessing(
+        self,
+        *,
+        document_id: int,
+        now: datetime | None = None,
+    ) -> ProcessingJob:
+        """Queue one replacement extraction while retaining current output."""
+        document = self.documents.get_active_by_id_for_update(document_id)
+        if document is None:
+            raise DocumentNotFoundError()
+        if (
+            document.status != DocumentStatus.READY
+            or self.jobs.has_nonterminal_for_document_and_type(
+                document_id=document_id,
+                job_type=self.TEXT_EXTRACTION_JOB_TYPE,
+            )
+        ):
+            raise ProcessingJobStateError()
+        try:
+            job = self._create_queued_job(
+                document_id=document.id,
+                job_type=self.TEXT_EXTRACTION_JOB_TYPE,
+                timestamp=now or self._now(),
+            )
+            self._commit()
+            return job
+        except ProcessingJobPersistenceError:
+            raise
+        except Exception as error:
+            self.db.rollback()
+            raise ProcessingJobPersistenceError() from error
 
     def get_document_job(self, *, document_id: int, job_id: int) -> ProcessingJob:
         job = self.jobs.get_by_document_and_id(document_id=document_id, job_id=job_id)
@@ -51,15 +105,52 @@ class ProcessingJobService:
             raise DocumentNotFoundError()
         return self.jobs.list_by_document_id(document_id)
 
-    def claim_job(self, *, job_id: int, now: datetime | None = None) -> JobClaim:
+    def claim_job(
+        self,
+        *,
+        job_id: int,
+        now: datetime | None = None,
+        expected_job_type: str | None = None,
+    ) -> JobClaim:
         """Atomically allow one worker to run a queued job."""
-        claimed = self.jobs.claim_queued(job_id=job_id, now=now or self._now())
+        claimed = self.jobs.claim_queued(
+            job_id=job_id,
+            now=now or self._now(),
+            expected_job_type=expected_job_type,
+        )
         job = self.jobs.get_by_id(job_id)
         if job is None:
             raise ProcessingJobNotFoundError()
         if claimed:
             self._commit()
         return JobClaim(job=job, claimed=claimed)
+
+    def claim_text_extraction_job(
+        self,
+        *,
+        job_id: int,
+        now: datetime | None = None,
+    ) -> JobClaim:
+        """Claim extraction work and mark its active document as processing."""
+        timestamp = now or self._now()
+        claimed = self.jobs.claim_queued(
+            job_id=job_id,
+            now=timestamp,
+            expected_job_type=self.TEXT_EXTRACTION_JOB_TYPE,
+        )
+        job = self.jobs.get_by_id(job_id)
+        if job is None:
+            raise ProcessingJobNotFoundError()
+        if not claimed:
+            return JobClaim(job=job, claimed=False)
+        if job.document.deleted_at is not None:
+            self._cancel_running_job(job, timestamp)
+            self._commit()
+            return JobClaim(job=job, claimed=False)
+        job.document.status = DocumentStatus.PROCESSING
+        job.document.processing_error = None
+        self._commit()
+        return JobClaim(job=job, claimed=True)
 
     def complete_job(self, *, job_id: int, now: datetime | None = None) -> ProcessingJob:
         job = self._running_job(job_id)
@@ -68,6 +159,83 @@ class ProcessingJobService:
         job.error_message = None
         self._commit()
         return job
+
+    def complete_source_integrity_job(
+        self,
+        *,
+        job_id: int,
+        now: datetime | None = None,
+    ) -> ProcessingJob:
+        """Finish source validation and atomically queue text extraction."""
+        job = self._running_job(job_id)
+        if job.job_type != self.SOURCE_INTEGRITY_JOB_TYPE:
+            raise ProcessingJobStateError()
+        timestamp = now or self._now()
+        job.status = ProcessingJobStatus.SUCCEEDED
+        job.finished_at = timestamp
+        job.error_message = None
+        extraction_job = self._create_queued_job(
+            document_id=job.document_id,
+            job_type=self.TEXT_EXTRACTION_JOB_TYPE,
+            timestamp=timestamp,
+        )
+        self._commit()
+        return extraction_job
+
+    def complete_text_extraction_job(
+        self,
+        *,
+        job_id: int,
+        normalized_text: NormalizedText,
+        chunks: list[TextChunk],
+        now: datetime | None = None,
+    ) -> DocumentExtraction:
+        """Persist complete output and advance job/document readiness together."""
+        job = self._running_job(job_id)
+        if job.job_type != self.TEXT_EXTRACTION_JOB_TYPE or not chunks:
+            raise ProcessingJobStateError()
+        if job.document.deleted_at is not None:
+            raise ProcessingJobStateError()
+        timestamp = now or self._now()
+        extraction = DocumentExtraction(
+            document_id=job.document_id,
+            normalized_text=normalized_text.text,
+            text_sha256=hashlib.sha256(normalized_text.text.encode()).hexdigest(),
+            character_count=len(normalized_text.text),
+            extractor_version=self.EXTRACTION_VERSION,
+            extracted_at=timestamp,
+            chunks=[
+                DocumentChunk(
+                    ordinal=chunk.ordinal,
+                    content=chunk.content,
+                    content_sha256=hashlib.sha256(chunk.content.encode()).hexdigest(),
+                    start_offset=chunk.start_offset,
+                    end_offset=chunk.end_offset,
+                    source_locations=(
+                        [
+                            {"kind": location.kind, "index": location.index}
+                            for location in chunk.source_locations
+                        ]
+                        or None
+                    ),
+                )
+                for chunk in chunks
+            ],
+        )
+        try:
+            persisted = self.extractions.replace(extraction)
+            job.status = ProcessingJobStatus.SUCCEEDED
+            job.finished_at = timestamp
+            job.error_message = None
+            job.document.status = DocumentStatus.READY
+            job.document.processing_error = None
+            self._commit()
+            return persisted
+        except ProcessingJobPersistenceError:
+            raise
+        except Exception as error:
+            self.db.rollback()
+            raise ProcessingJobPersistenceError() from error
 
     def fail_job(self, *, job_id: int, safe_error: str, now: datetime | None = None) -> ProcessingJob:
         error = self._safe_error(safe_error)
@@ -103,6 +271,13 @@ class ProcessingJobService:
         self.outbox_events.cancel_nonterminal_for_document(document_id=document_id)
         return cancelled
 
+    def cancel_running_job(self, *, job_id: int, now: datetime | None = None) -> ProcessingJob:
+        """Cancel a claimed job when a late worker observes deleted content."""
+        job = self._running_job(job_id)
+        self._cancel_running_job(job, now or self._now())
+        self._commit()
+        return job
+
     def _running_job(self, job_id: int) -> ProcessingJob:
         job = self.jobs.get_by_id(job_id)
         if job is None:
@@ -110,6 +285,37 @@ class ProcessingJobService:
         if job.status != ProcessingJobStatus.RUNNING:
             raise ProcessingJobStateError()
         return job
+
+    def _create_queued_job(
+        self,
+        *,
+        document_id: int,
+        job_type: str,
+        timestamp: datetime,
+    ) -> ProcessingJob:
+        job = self.jobs.create(
+            ProcessingJob(
+                document_id=document_id,
+                job_type=job_type,
+                queued_at=timestamp,
+            )
+        )
+        self.outbox_events.create(
+            ProcessingOutboxEvent(
+                processing_job_id=job.id,
+                event_type=self.EVENT_TYPE,
+                payload={"processing_job_id": job.id},
+                available_at=timestamp,
+            )
+        )
+        return job
+
+    @staticmethod
+    def _cancel_running_job(job: ProcessingJob, timestamp: datetime) -> None:
+        job.status = ProcessingJobStatus.CANCELLED
+        job.cancelled_at = timestamp
+        job.finished_at = timestamp
+        job.error_message = None
 
     def _commit(self) -> None:
         try:

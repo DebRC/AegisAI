@@ -11,6 +11,7 @@ from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import DocumentValidationError
 from app.models.document import Document
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.document_extraction_repository import DocumentExtractionRepository
 from app.services.processing_job_service import ProcessingJobService
 from app.storage.documents import DocumentStorage
 from app.storage.documents import StoredDocument
@@ -42,6 +43,7 @@ class DocumentService:
     def __init__(self, db: Session, storage: DocumentStorage):
         self.db = db
         self.documents = DocumentRepository(db)
+        self.extractions = DocumentExtractionRepository(db)
         self.processing_jobs = ProcessingJobService(db)
         self.storage = storage
 
@@ -122,6 +124,7 @@ class DocumentService:
 
         try:
             self.processing_jobs.cancel_document_jobs(document_id=document.id)
+            self.extractions.delete_by_document_id(document.id)
             document.deleted_at = datetime.now(timezone.utc)
             self.documents.update()
             self._commit()

@@ -38,6 +38,38 @@ class DocumentRenameRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
 
+class DocumentExtractionResponse(BaseModel):
+    id: int
+    document_id: int
+    character_count: int
+    extractor_version: str
+    extracted_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentChunkResponse(BaseModel):
+    id: int
+    ordinal: int
+    content: str
+    start_offset: int
+    end_offset: int
+    source_locations: list[dict[str, int | str]] | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentChunkListResponse(BaseModel):
+    items: list[DocumentChunkResponse]
+    offset: int
+    limit: int
+    total: int
+
+
 class ProcessingJobResponse(BaseModel):
     id: int
     document_id: int

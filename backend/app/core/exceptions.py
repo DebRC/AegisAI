@@ -74,6 +74,10 @@ class DocumentNotFoundError(Exception):
     """Raised when a requested document is absent or has been soft-deleted."""
 
 
+class DocumentExtractionNotFoundError(Exception):
+    """Raised when an active document does not yet have extracted output."""
+
+
 class ProcessingJobNotFoundError(Exception):
     """Raised when a processing job is absent or belongs to another document."""
 

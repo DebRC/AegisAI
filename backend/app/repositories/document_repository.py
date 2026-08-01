@@ -30,6 +30,17 @@ class DocumentRepository:
             )
         )
 
+    def get_active_by_id_for_update(self, document_id: int) -> Document | None:
+        """Lock an active document while changing its processing lifecycle."""
+        return self.db.scalar(
+            select(Document)
+            .where(
+                Document.id == document_id,
+                Document.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+
     def list_active(self, *, offset: int, limit: int) -> list[Document]:
         return list(
             self.db.scalars(

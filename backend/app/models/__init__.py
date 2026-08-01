@@ -1,5 +1,7 @@
 from app.models.document import Document
 from app.models.document import DocumentStatus
+from app.models.document_extraction import DocumentChunk
+from app.models.document_extraction import DocumentExtraction
 from app.models.processing_job import ProcessingJob
 from app.models.processing_job import ProcessingJobStatus
 from app.models.processing_outbox_event import ProcessingOutboxEvent
@@ -16,6 +18,8 @@ __all__ = [
     "User",
     "Document",
     "DocumentStatus",
+    "DocumentExtraction",
+    "DocumentChunk",
     "ProcessingJob",
     "ProcessingJobStatus",
     "ProcessingOutboxEvent",
