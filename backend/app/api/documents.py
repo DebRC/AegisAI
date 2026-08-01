@@ -10,16 +10,23 @@ from fastapi import UploadFile
 from fastapi import status
 
 from app.api.dependencies import get_document_service
+from app.api.dependencies import get_processing_job_service
 from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import DocumentPersistenceError
 from app.core.exceptions import DocumentValidationError
+from app.core.exceptions import ProcessingJobNotFoundError
+from app.core.exceptions import ProcessingJobPersistenceError
+from app.core.exceptions import ProcessingJobStateError
 from app.models.user import User
 from app.schemas.document import DocumentListResponse
 from app.schemas.document import DocumentRenameRequest
 from app.schemas.document import DocumentResponse
+from app.schemas.document import ProcessingJobListResponse
+from app.schemas.document import ProcessingJobResponse
 from app.security.dependencies import require_permission
 from app.security.permissions import PermissionCode
 from app.services.document_service import DocumentService
+from app.services.processing_job_service import ProcessingJobService
 from app.storage.documents import DocumentStorageError
 from app.storage.documents import EmptyDocumentError
 from app.storage.documents import StorageLimitExceededError
@@ -46,7 +53,13 @@ def _document_error_to_http_exception(error: Exception) -> HTTPException:
             detail="Document not found",
         )
 
-    if isinstance(error, (DocumentPersistenceError, DocumentStorageError)):
+    if isinstance(error, ProcessingJobNotFoundError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Processing job not found")
+
+    if isinstance(error, ProcessingJobStateError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Processing job cannot be retried")
+
+    if isinstance(error, (DocumentPersistenceError, ProcessingJobPersistenceError, DocumentStorageError)):
         return HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Document storage is temporarily unavailable",
@@ -157,3 +170,54 @@ def delete_document(
         raise _document_error_to_http_exception(error) from error
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{document_id}/processing-jobs",
+    response_model=ProcessingJobListResponse,
+    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
+)
+def list_processing_jobs(
+    document_id: int,
+    service: ProcessingJobService = Depends(get_processing_job_service),
+) -> ProcessingJobListResponse:
+    try:
+        return ProcessingJobListResponse(items=service.list_document_jobs(document_id))
+    except DocumentNotFoundError as error:
+        raise _document_error_to_http_exception(error) from error
+
+
+@router.get(
+    "/{document_id}/processing-jobs/{job_id}",
+    response_model=ProcessingJobResponse,
+    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
+)
+def get_processing_job(
+    document_id: int,
+    job_id: int,
+    service: ProcessingJobService = Depends(get_processing_job_service),
+) -> ProcessingJobResponse:
+    try:
+        return service.get_document_job(document_id=document_id, job_id=job_id)
+    except ProcessingJobNotFoundError as error:
+        raise _document_error_to_http_exception(error) from error
+
+
+@router.post(
+    "/{document_id}/processing-jobs/{job_id}/retry",
+    response_model=ProcessingJobResponse,
+)
+def retry_processing_job(
+    document_id: int,
+    job_id: int,
+    service: ProcessingJobService = Depends(get_processing_job_service),
+    _: User = Depends(require_permission(PermissionCode.DOCUMENTS_WRITE)),
+) -> ProcessingJobResponse:
+    try:
+        return service.retry_failed_job(document_id=document_id, job_id=job_id)
+    except (
+        ProcessingJobNotFoundError,
+        ProcessingJobStateError,
+        ProcessingJobPersistenceError,
+    ) as error:
+        raise _document_error_to_http_exception(error) from error

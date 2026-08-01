@@ -5,6 +5,7 @@ from pydantic import ConfigDict
 from pydantic import Field
 
 from app.models.document import DocumentStatus
+from app.models.processing_job import ProcessingJobStatus
 
 
 class DocumentResponse(BaseModel):
@@ -35,3 +36,24 @@ class DocumentRenameRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
 
     model_config = ConfigDict(str_strip_whitespace=True)
+
+
+class ProcessingJobResponse(BaseModel):
+    id: int
+    document_id: int
+    job_type: str
+    status: ProcessingJobStatus
+    attempt_count: int
+    error_message: str | None
+    queued_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    cancelled_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProcessingJobListResponse(BaseModel):
+    items: list[ProcessingJobResponse]

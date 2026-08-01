@@ -134,6 +134,9 @@ class ApplicationTests(unittest.TestCase):
             ("/documents/{document_id}", "GET"): PermissionCode.DOCUMENTS_READ,
             ("/documents/{document_id}", "PATCH"): PermissionCode.DOCUMENTS_WRITE,
             ("/documents/{document_id}", "DELETE"): PermissionCode.DOCUMENTS_WRITE,
+            ("/documents/{document_id}/processing-jobs", "GET"): PermissionCode.DOCUMENTS_READ,
+            ("/documents/{document_id}/processing-jobs/{job_id}", "GET"): PermissionCode.DOCUMENTS_READ,
+            ("/documents/{document_id}/processing-jobs/{job_id}/retry", "POST"): PermissionCode.DOCUMENTS_WRITE,
         }
 
         actual_permissions = {
