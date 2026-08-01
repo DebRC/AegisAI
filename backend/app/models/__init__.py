@@ -1,5 +1,9 @@
 from app.models.document import Document
 from app.models.document import DocumentStatus
+from app.models.processing_job import ProcessingJob
+from app.models.processing_job import ProcessingJobStatus
+from app.models.processing_outbox_event import ProcessingOutboxEvent
+from app.models.processing_outbox_event import ProcessingOutboxEventStatus
 from app.models.external_identity import ExternalIdentity
 from app.models.user import User
 from app.models.refresh_token import RefreshToken
@@ -12,6 +16,10 @@ __all__ = [
     "User",
     "Document",
     "DocumentStatus",
+    "ProcessingJob",
+    "ProcessingJobStatus",
+    "ProcessingOutboxEvent",
+    "ProcessingOutboxEventStatus",
     "ExternalIdentity",
     "RefreshToken",
     "Permission",

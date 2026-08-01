@@ -15,7 +15,8 @@ The backend foundation and document-ingestion boundary are complete: containeriz
 | Authorization | Available | Local roles and permissions, administrator bootstrap, and request-time RBAC enforcement. |
 | Enterprise SSO | Available | Google OpenID Connect, GitHub OAuth, and Microsoft Entra ID adapters with PKCE, signed state, nonce validation, account linking, and local AegisAI sessions. |
 | Document ingestion | Available | RBAC-protected upload, metadata management, local persistent original-file storage, SHA-256 integrity metadata, and soft deletion. |
-| Knowledge processing and retrieval | Planned | Background processing, extraction, chunking, embeddings, Qdrant indexing, retrieval, and RAG chat. |
+| Background processing | Available | Redis/Celery workers verify durable uploaded sources outside HTTP requests, with PostgreSQL-backed job state, retries, cancellation, and failure handling. |
+| Knowledge processing and retrieval | Planned | Text extraction, chunking, embeddings, Qdrant indexing, retrieval, and RAG chat. |
 
 Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; it does not yet store vectors in Qdrant.
 
@@ -37,7 +38,8 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | --- | --- | --- |
 | Phases 1–5 — Foundation, data, identity, and access control | Complete | Containerized backend, migrations, local authentication, RBAC, and enterprise SSO. |
 | Phase 6 — Document ingestion | Complete | Secure local storage, upload validation, metadata lifecycle, RBAC enforcement, and document-management APIs. |
-| Phases 7–8 — Document processing | Planned | Asynchronous processing, text extraction, and chunking. |
+| Phase 7 — Background processing | Complete | Redis/Celery runtime, durable outbox delivery, worker integrity checks, job status, retry, and cancellation. |
+| Phase 8 — Text extraction and chunking | Planned | Convert supported sources into traceable retrieval-ready chunks. |
 | Phases 9–12 — Retrieval and RAG | Planned | Embeddings, vector indexing, metadata filtering, streaming chat, citations, and permission-aware retrieval. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
@@ -46,6 +48,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 
 - [RBAC design](docs/rbac.md) explains the current role and permission model.
 - [Document ingestion design](docs/document-ingestion.md) defines the implemented Phase 6 storage, lifecycle, authorization, and API contract.
+- [Background processing design](docs/background-processing.md) defines the implemented Phase 7 job, outbox, worker, and retry contract.
 
 ## Architecture
 

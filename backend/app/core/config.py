@@ -15,6 +15,15 @@ class Settings(BaseSettings):
     DOCUMENT_STORAGE_PATH: str = "/data/documents"
     DOCUMENT_MAX_UPLOAD_BYTES: int = 25 * 1024 * 1024
 
+    # Redis transports Celery messages; PostgreSQL remains authoritative for
+    # document-processing jobs and durable outbox events.
+    CELERY_BROKER_URL: str = "redis://redis:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://redis:6379/1"
+    CELERY_TASK_DEFAULT_QUEUE: str = "aegis-processing"
+    CELERY_TASK_TIME_LIMIT_SECONDS: int = 10 * 60
+    CELERY_TASK_SOFT_TIME_LIMIT_SECONDS: int = 9 * 60
+    PROCESSING_OUTBOX_DISPATCH_INTERVAL_SECONDS: int = 30
+
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str
 

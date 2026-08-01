@@ -8,6 +8,7 @@ from app.integrations.sso.factory import SsoProviderFactory
 from app.security.sso_transactions import SsoTransactionManager
 from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
+from app.services.processing_job_service import ProcessingJobService
 from app.services.rbac_service import RbacService
 from app.services.sso_account_service import SsoAccountService
 from app.storage.documents import DocumentStorage
@@ -38,6 +39,12 @@ def get_document_service(
     storage: DocumentStorage = Depends(get_document_storage),
 ) -> DocumentService:
     return DocumentService(db, storage)
+
+
+def get_processing_job_service(
+    db: Session = Depends(get_db),
+) -> ProcessingJobService:
+    return ProcessingJobService(db)
 
 
 def get_sso_account_service(
