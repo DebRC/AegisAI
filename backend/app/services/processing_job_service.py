@@ -21,7 +21,8 @@ class JobClaim:
 class ProcessingJobService:
     """Coordinate durable job and outbox state with explicit transactions."""
 
-    JOB_TYPE = "source_integrity"
+    SOURCE_INTEGRITY_JOB_TYPE = "source_integrity"
+    TEXT_EXTRACTION_JOB_TYPE = "text_extraction"
     EVENT_TYPE = "processing_job.queued"
 
     def __init__(self, db: Session):
@@ -36,9 +37,22 @@ class ProcessingJobService:
         if document is None:
             raise DocumentNotFoundError()
         timestamp = now or self._now()
-        job = self.jobs.create(ProcessingJob(document_id=document.id, job_type=self.JOB_TYPE, queued_at=timestamp))
-        self.outbox_events.create(ProcessingOutboxEvent(processing_job_id=job.id, event_type=self.EVENT_TYPE, payload={"processing_job_id": job.id}, available_at=timestamp))
-        return job
+        return self._create_queued_job(
+            document_id=document.id,
+            job_type=self.SOURCE_INTEGRITY_JOB_TYPE,
+            timestamp=timestamp,
+        )
+
+    def create_text_extraction_job(self, *, document_id: int, now: datetime | None = None) -> ProcessingJob:
+        """Create the next durable pipeline stage and leave the caller to commit."""
+        document = self.documents.get_active_by_id(document_id)
+        if document is None:
+            raise DocumentNotFoundError()
+        return self._create_queued_job(
+            document_id=document.id,
+            job_type=self.TEXT_EXTRACTION_JOB_TYPE,
+            timestamp=now or self._now(),
+        )
 
     def get_document_job(self, *, document_id: int, job_id: int) -> ProcessingJob:
         job = self.jobs.get_by_document_and_id(document_id=document_id, job_id=job_id)
@@ -51,9 +65,19 @@ class ProcessingJobService:
             raise DocumentNotFoundError()
         return self.jobs.list_by_document_id(document_id)
 
-    def claim_job(self, *, job_id: int, now: datetime | None = None) -> JobClaim:
+    def claim_job(
+        self,
+        *,
+        job_id: int,
+        now: datetime | None = None,
+        expected_job_type: str | None = None,
+    ) -> JobClaim:
         """Atomically allow one worker to run a queued job."""
-        claimed = self.jobs.claim_queued(job_id=job_id, now=now or self._now())
+        claimed = self.jobs.claim_queued(
+            job_id=job_id,
+            now=now or self._now(),
+            expected_job_type=expected_job_type,
+        )
         job = self.jobs.get_by_id(job_id)
         if job is None:
             raise ProcessingJobNotFoundError()
@@ -68,6 +92,28 @@ class ProcessingJobService:
         job.error_message = None
         self._commit()
         return job
+
+    def complete_source_integrity_job(
+        self,
+        *,
+        job_id: int,
+        now: datetime | None = None,
+    ) -> ProcessingJob:
+        """Finish source validation and atomically queue text extraction."""
+        job = self._running_job(job_id)
+        if job.job_type != self.SOURCE_INTEGRITY_JOB_TYPE:
+            raise ProcessingJobStateError()
+        timestamp = now or self._now()
+        job.status = ProcessingJobStatus.SUCCEEDED
+        job.finished_at = timestamp
+        job.error_message = None
+        extraction_job = self._create_queued_job(
+            document_id=job.document_id,
+            job_type=self.TEXT_EXTRACTION_JOB_TYPE,
+            timestamp=timestamp,
+        )
+        self._commit()
+        return extraction_job
 
     def fail_job(self, *, job_id: int, safe_error: str, now: datetime | None = None) -> ProcessingJob:
         error = self._safe_error(safe_error)
@@ -109,6 +155,30 @@ class ProcessingJobService:
             raise ProcessingJobNotFoundError()
         if job.status != ProcessingJobStatus.RUNNING:
             raise ProcessingJobStateError()
+        return job
+
+    def _create_queued_job(
+        self,
+        *,
+        document_id: int,
+        job_type: str,
+        timestamp: datetime,
+    ) -> ProcessingJob:
+        job = self.jobs.create(
+            ProcessingJob(
+                document_id=document_id,
+                job_type=job_type,
+                queued_at=timestamp,
+            )
+        )
+        self.outbox_events.create(
+            ProcessingOutboxEvent(
+                processing_job_id=job.id,
+                event_type=self.EVENT_TYPE,
+                payload={"processing_job_id": job.id},
+                available_at=timestamp,
+            )
+        )
         return job
 
     def _commit(self) -> None:

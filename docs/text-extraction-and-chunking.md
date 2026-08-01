@@ -193,7 +193,7 @@ model.
    failure, retry, and authorization contract (8.1).
 2. [x] Add extraction adapters, dependencies, and configuration defaults (8.2).
 3. [x] Add extraction-result and chunk models with an Alembic migration (8.3).
-4. [ ] Queue and dispatch the durable text-extraction pipeline stage (8.4).
+4. [x] Queue the durable text-extraction pipeline stage after source validation (8.4).
 5. [ ] Implement cleaning and deterministic chunking (8.5).
 6. [ ] Run extraction in the worker with atomic persistence and reprocessing
    semantics (8.6).

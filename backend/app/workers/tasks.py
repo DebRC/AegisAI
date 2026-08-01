@@ -18,7 +18,10 @@ def run_source_integrity_check(processing_job_id: int) -> dict[str, str]:
     db = SessionLocal()
     try:
         service = ProcessingJobService(db)
-        claim = service.claim_job(job_id=processing_job_id)
+        claim = service.claim_job(
+            job_id=processing_job_id,
+            expected_job_type=ProcessingJobService.SOURCE_INTEGRITY_JOB_TYPE,
+        )
         if not claim.claimed:
             return {"status": claim.job.status.value}
 
@@ -51,7 +54,7 @@ def run_source_integrity_check(processing_job_id: int) -> dict[str, str]:
             return {"status": "failed"}
 
         try:
-            service.complete_job(job_id=processing_job_id)
+            service.complete_source_integrity_job(job_id=processing_job_id)
         except ProcessingJobStateError:
             return {"status": "cancelled"}
         return {"status": "succeeded"}
@@ -66,9 +69,16 @@ def dispatch_processing_outbox() -> dict[str, int]:
     try:
         dispatcher = ProcessingJobDispatcher(
             db,
-            publish_job=lambda job_id: run_source_integrity_check.delay(job_id).id,
+            publish_job=_publish_processing_job,
         )
         summary = dispatcher.dispatch_pending()
         return {"published": summary.published, "deferred": summary.deferred}
     finally:
         db.close()
+
+
+def _publish_processing_job(job_type: str, processing_job_id: int) -> str:
+    """Route only implemented stages; later stages remain durable and pending."""
+    if job_type == ProcessingJobService.SOURCE_INTEGRITY_JOB_TYPE:
+        return run_source_integrity_check.delay(processing_job_id).id
+    raise ValueError("No worker task is registered for this processing job type")

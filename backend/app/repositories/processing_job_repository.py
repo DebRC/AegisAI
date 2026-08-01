@@ -47,14 +47,23 @@ class ProcessingJobRepository:
             )
         )
 
-    def claim_queued(self, *, job_id: int, now: datetime) -> bool:
+    def claim_queued(
+        self,
+        *,
+        job_id: int,
+        now: datetime,
+        expected_job_type: str | None = None,
+    ) -> bool:
         """Atomically claim a queued job; duplicate workers receive ``False``."""
+        conditions = [
+            ProcessingJob.id == job_id,
+            ProcessingJob.status == ProcessingJobStatus.QUEUED,
+        ]
+        if expected_job_type is not None:
+            conditions.append(ProcessingJob.job_type == expected_job_type)
         result = self.db.execute(
             update(ProcessingJob)
-            .where(
-                ProcessingJob.id == job_id,
-                ProcessingJob.status == ProcessingJobStatus.QUEUED,
-            )
+            .where(*conditions)
             .values(
                 status=ProcessingJobStatus.RUNNING,
                 attempt_count=ProcessingJob.attempt_count + 1,
