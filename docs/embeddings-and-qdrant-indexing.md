@@ -96,6 +96,26 @@ active collection therefore has these rules:
 - changing provider/model/dimension requires a new collection and a deliberate
   reindex, not an in-place rewrite of existing points.
 
+The vector-store boundary creates the collection only when it is absent, with
+the configured dimension and cosine distance. It then reads its configuration
+back before any point write. A pre-existing collection with named vectors, a
+different dimension, or a different distance metric is rejected; AegisAI never
+deletes or recreates it automatically. The boundary also creates Qdrant payload
+indexes for the allow-listed filter fields before ingesting points.
+
+Its typed point input makes the payload contract explicit. Every point contains
+only the seven fields below, and no caller can attach arbitrary payload data:
+
+```text
+document_id, chunk_id, document_extraction_id, uploader_user_id,
+content_type, embedding_provider, embedding_model
+```
+
+The boundary accepts caller-supplied UUID point IDs, validates finite vectors
+against the configured dimension, waits for Qdrant upsert/delete completion,
+and exposes only safe operation errors. The Phase 9.6 worker will supply the
+deterministic IDs and invoke these operations.
+
 The provider name, model, collection name, dimension, request timeout, and
 batch limits are validated environment settings. `QDRANT_API_KEY` and
 `OPENAI_API_KEY` are optional secret settings: they remain empty for the local
@@ -180,7 +200,7 @@ any user can receive semantic search results or citations.
 - [x] 9.2 Qdrant configuration and runtime client
 - [x] 9.3 Embedding persistence and migration
 - [x] 9.4 Embedding-provider abstraction
-- [ ] 9.5 Qdrant collection and vector operations
+- [x] 9.5 Qdrant collection and vector operations
 - [ ] 9.6 Background indexing pipeline
 - [ ] 9.7 Reprocessing, idempotency, and cleanup
 - [ ] 9.8 Status visibility and authorization
