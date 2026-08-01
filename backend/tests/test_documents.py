@@ -11,6 +11,8 @@ from app.core.exceptions import DocumentPersistenceError
 from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import DocumentValidationError
 from app.models import Document
+from app.models import DocumentChunk
+from app.models import DocumentExtraction
 from app.models import DocumentStatus
 from app.repositories.document_repository import DocumentRepository
 from app.services.document_service import DocumentService
@@ -296,6 +298,35 @@ class DocumentServiceTests(DatabaseTestCase, unittest.TestCase):
         self.assertIsNotNone(document.deleted_at)
         with self.assertRaises(DocumentNotFoundError):
             service.get_document(document.id)
+
+    def test_delete_removes_extracted_output_with_document_metadata(self) -> None:
+        service = DocumentService(self.session, self.storage)
+        document = self._upload(service, "security-policy.txt")
+        self.session.add(
+            DocumentExtraction(
+                document_id=document.id,
+                normalized_text="Security policy",
+                text_sha256="a" * 64,
+                character_count=15,
+                extractor_version="phase8-v1",
+                extracted_at=datetime.now(timezone.utc),
+                chunks=[
+                    DocumentChunk(
+                        ordinal=0,
+                        content="Security policy",
+                        content_sha256="a" * 64,
+                        start_offset=0,
+                        end_offset=15,
+                    )
+                ],
+            )
+        )
+        self.session.commit()
+
+        service.delete_document(document.id)
+
+        self.assertEqual(self.session.query(DocumentExtraction).count(), 0)
+        self.assertEqual(self.session.query(DocumentChunk).count(), 0)
 
     def test_rename_rejects_blank_title(self) -> None:
         service = DocumentService(self.session, self.storage)

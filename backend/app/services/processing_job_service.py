@@ -1,13 +1,19 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 
 from sqlalchemy.orm import Session
 
+from app.extraction.processing import NormalizedText
+from app.extraction.processing import TextChunk
 from app.core.exceptions import DocumentNotFoundError, ProcessingJobNotFoundError, ProcessingJobPersistenceError, ProcessingJobStateError
 from app.models.document import DocumentStatus
+from app.models.document_extraction import DocumentChunk
+from app.models.document_extraction import DocumentExtraction
 from app.models.processing_job import ProcessingJob, ProcessingJobStatus
 from app.models.processing_outbox_event import ProcessingOutboxEvent
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.document_extraction_repository import DocumentExtractionRepository
 from app.repositories.processing_job_repository import ProcessingJobRepository
 from app.repositories.processing_outbox_event_repository import ProcessingOutboxEventRepository
 
@@ -24,10 +30,12 @@ class ProcessingJobService:
     SOURCE_INTEGRITY_JOB_TYPE = "source_integrity"
     TEXT_EXTRACTION_JOB_TYPE = "text_extraction"
     EVENT_TYPE = "processing_job.queued"
+    EXTRACTION_VERSION = "phase8-v1"
 
     def __init__(self, db: Session):
         self.db = db
         self.documents = DocumentRepository(db)
+        self.extractions = DocumentExtractionRepository(db)
         self.jobs = ProcessingJobRepository(db)
         self.outbox_events = ProcessingOutboxEventRepository(db)
 
@@ -85,6 +93,33 @@ class ProcessingJobService:
             self._commit()
         return JobClaim(job=job, claimed=claimed)
 
+    def claim_text_extraction_job(
+        self,
+        *,
+        job_id: int,
+        now: datetime | None = None,
+    ) -> JobClaim:
+        """Claim extraction work and mark its active document as processing."""
+        timestamp = now or self._now()
+        claimed = self.jobs.claim_queued(
+            job_id=job_id,
+            now=timestamp,
+            expected_job_type=self.TEXT_EXTRACTION_JOB_TYPE,
+        )
+        job = self.jobs.get_by_id(job_id)
+        if job is None:
+            raise ProcessingJobNotFoundError()
+        if not claimed:
+            return JobClaim(job=job, claimed=False)
+        if job.document.deleted_at is not None:
+            self._cancel_running_job(job, timestamp)
+            self._commit()
+            return JobClaim(job=job, claimed=False)
+        job.document.status = DocumentStatus.PROCESSING
+        job.document.processing_error = None
+        self._commit()
+        return JobClaim(job=job, claimed=True)
+
     def complete_job(self, *, job_id: int, now: datetime | None = None) -> ProcessingJob:
         job = self._running_job(job_id)
         job.status = ProcessingJobStatus.SUCCEEDED
@@ -114,6 +149,61 @@ class ProcessingJobService:
         )
         self._commit()
         return extraction_job
+
+    def complete_text_extraction_job(
+        self,
+        *,
+        job_id: int,
+        normalized_text: NormalizedText,
+        chunks: list[TextChunk],
+        now: datetime | None = None,
+    ) -> DocumentExtraction:
+        """Persist complete output and advance job/document readiness together."""
+        job = self._running_job(job_id)
+        if job.job_type != self.TEXT_EXTRACTION_JOB_TYPE or not chunks:
+            raise ProcessingJobStateError()
+        if job.document.deleted_at is not None:
+            raise ProcessingJobStateError()
+        timestamp = now or self._now()
+        extraction = DocumentExtraction(
+            document_id=job.document_id,
+            normalized_text=normalized_text.text,
+            text_sha256=hashlib.sha256(normalized_text.text.encode()).hexdigest(),
+            character_count=len(normalized_text.text),
+            extractor_version=self.EXTRACTION_VERSION,
+            extracted_at=timestamp,
+            chunks=[
+                DocumentChunk(
+                    ordinal=chunk.ordinal,
+                    content=chunk.content,
+                    content_sha256=hashlib.sha256(chunk.content.encode()).hexdigest(),
+                    start_offset=chunk.start_offset,
+                    end_offset=chunk.end_offset,
+                    source_locations=(
+                        [
+                            {"kind": location.kind, "index": location.index}
+                            for location in chunk.source_locations
+                        ]
+                        or None
+                    ),
+                )
+                for chunk in chunks
+            ],
+        )
+        try:
+            persisted = self.extractions.replace(extraction)
+            job.status = ProcessingJobStatus.SUCCEEDED
+            job.finished_at = timestamp
+            job.error_message = None
+            job.document.status = DocumentStatus.READY
+            job.document.processing_error = None
+            self._commit()
+            return persisted
+        except ProcessingJobPersistenceError:
+            raise
+        except Exception as error:
+            self.db.rollback()
+            raise ProcessingJobPersistenceError() from error
 
     def fail_job(self, *, job_id: int, safe_error: str, now: datetime | None = None) -> ProcessingJob:
         error = self._safe_error(safe_error)
@@ -149,6 +239,13 @@ class ProcessingJobService:
         self.outbox_events.cancel_nonterminal_for_document(document_id=document_id)
         return cancelled
 
+    def cancel_running_job(self, *, job_id: int, now: datetime | None = None) -> ProcessingJob:
+        """Cancel a claimed job when a late worker observes deleted content."""
+        job = self._running_job(job_id)
+        self._cancel_running_job(job, now or self._now())
+        self._commit()
+        return job
+
     def _running_job(self, job_id: int) -> ProcessingJob:
         job = self.jobs.get_by_id(job_id)
         if job is None:
@@ -180,6 +277,13 @@ class ProcessingJobService:
             )
         )
         return job
+
+    @staticmethod
+    def _cancel_running_job(job: ProcessingJob, timestamp: datetime) -> None:
+        job.status = ProcessingJobStatus.CANCELLED
+        job.cancelled_at = timestamp
+        job.finished_at = timestamp
+        job.error_message = None
 
     def _commit(self) -> None:
         try:

@@ -5,9 +5,13 @@ import hashlib
 from app.core.exceptions import ProcessingJobStateError
 from app.core.config import settings
 from app.db.database import SessionLocal
+from app.extraction.processing import TextChunker
+from app.extraction.processing import TextNormalizer
+from app.extraction.registry import TextExtractorRegistry
 from app.models.document import Document
 from app.services.processing_job_service import ProcessingJobService
 from app.services.processing_job_dispatcher import ProcessingJobDispatcher
+from app.services.text_extraction_service import TextExtractionService
 from app.storage.documents import DocumentStorageError, LocalDocumentStorage
 from app.workers.celery_app import celery_app
 
@@ -62,6 +66,30 @@ def run_source_integrity_check(processing_job_id: int) -> dict[str, str]:
         db.close()
 
 
+@celery_app.task(name="app.workers.tasks.run_text_extraction")
+def run_text_extraction(processing_job_id: int) -> dict[str, str]:
+    """Extract, normalize, chunk, and persist one document outside HTTP."""
+    db = SessionLocal()
+    try:
+        service = TextExtractionService(
+            db,
+            LocalDocumentStorage(
+                settings.DOCUMENT_STORAGE_PATH,
+                settings.DOCUMENT_MAX_UPLOAD_BYTES,
+            ),
+            TextExtractorRegistry(settings.DOCUMENT_MAX_EXTRACTED_TEXT_CHARACTERS),
+            TextNormalizer(),
+            TextChunker(
+                settings.DOCUMENT_CHUNK_TARGET_CHARACTERS,
+                settings.DOCUMENT_CHUNK_OVERLAP_CHARACTERS,
+            ),
+            settings.DOCUMENT_MAX_EXTRACTED_TEXT_CHARACTERS,
+        )
+        return {"status": service.process(processing_job_id)}
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.workers.tasks.dispatch_processing_outbox")
 def dispatch_processing_outbox() -> dict[str, int]:
     """Publish a bounded batch of durable jobs from PostgreSQL to Redis."""
@@ -78,7 +106,9 @@ def dispatch_processing_outbox() -> dict[str, int]:
 
 
 def _publish_processing_job(job_type: str, processing_job_id: int) -> str:
-    """Route only implemented stages; later stages remain durable and pending."""
+    """Route each supported durable pipeline stage to its Celery task."""
     if job_type == ProcessingJobService.SOURCE_INTEGRITY_JOB_TYPE:
         return run_source_integrity_check.delay(processing_job_id).id
+    if job_type == ProcessingJobService.TEXT_EXTRACTION_JOB_TYPE:
+        return run_text_extraction.delay(processing_job_id).id
     raise ValueError("No worker task is registered for this processing job type")
