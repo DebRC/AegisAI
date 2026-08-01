@@ -33,10 +33,11 @@ extract text, create chunks, generate embeddings, write vectors to Qdrant,
 retrieve or download content, add per-document ACLs, introduce tenancy, audit
 events, malware scanning, retention, or restore workflows.
 
-Those capabilities are deliberately sequenced later: Phase 7 adds background
-processing, Phase 8 extraction and chunking, Phase 9 embeddings and Qdrant,
-Phase 10 retrieval, Phase 12 permission-aware retrieval, and enterprise phases
-add audit, tenancy, and retention controls.
+Those capabilities are deliberately sequenced later: Phase 7 adds durable
+background-job orchestration and source-integrity validation; Phase 8 owns text
+extraction and chunking; Phase 9 adds embeddings and Qdrant; Phase 10 adds
+retrieval; Phase 12 adds permission-aware retrieval; and enterprise phases add
+audit, tenancy, and retention controls.
 
 ## Architecture
 
@@ -82,14 +83,19 @@ PENDING ──► PROCESSING ──► READY
 
 | State | Meaning | Introduced in |
 | --- | --- | --- |
-| `PENDING` | Original bytes and metadata are durable but no worker has processed them. | Phase 6 |
-| `PROCESSING` | A background worker is extracting or transforming the document. | Phase 7 |
+| `PENDING` | Original bytes and metadata are durable and await a content-transformation stage. A successful Phase 7 integrity-check job leaves the document pending for Phase 8 extraction. | Phase 6 |
+| `PROCESSING` | A content transformation is actively running. Phase 8 uses this state for extraction and chunking. | Phase 7–8 |
 | `READY` | Text/chunks are ready for later embedding and retrieval work. | Phase 8 |
 | `FAILED` | Processing could not complete; a reason is retained for an authorized operator. | Phase 7–8 |
 
 Every Phase 6 upload starts as `PENDING`; Phase 6 makes no automatic state
 transition. `deleted_at` is a soft-delete marker for metadata, while deletion
 also removes the stored object. Restore and retention are not promised yet.
+
+Phase 7 introduces a separate processing-job lifecycle for queueing, retries,
+and worker execution. Job state is operational; `Document.status` remains a
+content-readiness state. See the [background processing design](background-processing.md)
+for the planned Phase 7 contract.
 
 ## Metadata contract
 
