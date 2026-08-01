@@ -2,7 +2,7 @@
 
 AegisAI is a secure, enterprise-oriented knowledge platform in development. It is being built to let organizations ingest internal content, retrieve it safely, and eventually chat with it through a permission-aware RAG experience.
 
-The backend foundation and document-ingestion boundary are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, and secure document management. Processing, embeddings, retrieval, and chat are planned next.
+The backend foundation, document-ingestion boundary, and background-processing runtime are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, secure document management, and Redis/Celery workers. Text extraction and chunking are now underway; embeddings, retrieval, and chat follow.
 
 ## Overview
 
@@ -16,7 +16,8 @@ The backend foundation and document-ingestion boundary are complete: containeriz
 | Enterprise SSO | Available | Google OpenID Connect, GitHub OAuth, and Microsoft Entra ID adapters with PKCE, signed state, nonce validation, account linking, and local AegisAI sessions. |
 | Document ingestion | Available | RBAC-protected upload, metadata management, local persistent original-file storage, SHA-256 integrity metadata, and soft deletion. |
 | Background processing | Available | Redis/Celery workers verify durable uploaded sources outside HTTP requests, with PostgreSQL-backed job state, retries, cancellation, and failure handling. |
-| Knowledge processing and retrieval | Planned | Text extraction, chunking, embeddings, Qdrant indexing, retrieval, and RAG chat. |
+| Knowledge processing | In progress | Phase 8 defines the secure text-extraction and chunking contract; implementation is next. |
+| Retrieval and RAG | Planned | Embeddings, Qdrant indexing, retrieval, citations, and RAG chat. |
 
 Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; it does not yet store vectors in Qdrant.
 
@@ -39,7 +40,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phases 1–5 — Foundation, data, identity, and access control | Complete | Containerized backend, migrations, local authentication, RBAC, and enterprise SSO. |
 | Phase 6 — Document ingestion | Complete | Secure local storage, upload validation, metadata lifecycle, RBAC enforcement, and document-management APIs. |
 | Phase 7 — Background processing | Complete | Redis/Celery runtime, durable outbox delivery, worker integrity checks, job status, retry, and cancellation. |
-| Phase 8 — Text extraction and chunking | Planned | Convert supported sources into traceable retrieval-ready chunks. |
+| Phase 8 — Text extraction and chunking | In progress | Extraction and chunking contract defined; implementation underway. |
 | Phases 9–12 — Retrieval and RAG | Planned | Embeddings, vector indexing, metadata filtering, streaming chat, citations, and permission-aware retrieval. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
@@ -49,6 +50,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [RBAC design](docs/rbac.md) explains the current role and permission model.
 - [Document ingestion design](docs/document-ingestion.md) defines the implemented Phase 6 storage, lifecycle, authorization, and API contract.
 - [Background processing design](docs/background-processing.md) defines the implemented Phase 7 job, outbox, worker, and retry contract.
+- [Text extraction and chunking design](docs/text-extraction-and-chunking.md) defines the Phase 8 supported-format, lifecycle, traceability, and safety contract.
 
 ## Architecture
 
@@ -402,17 +404,16 @@ When running Alembic from the host, use a database URL reachable from the host�
 
 The next implementation milestones are:
 
-1. **Phase 7:** Redis/Celery background processing.
-2. **Phase 8:** text extraction and chunking.
-3. **Phase 9:** embeddings and Qdrant indexing.
-4. **Phase 10:** retrieval and metadata filtering.
-5. **Phase 11:** RAG chat, streaming, and citations.
-6. **Phase 12:** permission-aware retrieval.
-7. **Phase 13:** audit logging.
-8. **Phase 14:** administration dashboard.
-9. **Phase 15:** Next.js frontend.
-10. **Phase 16:** observability.
-11. **Phase 17:** CI/CD.
-12. **Phase 18:** Kubernetes.
-13. **Phase 19:** multi-tenancy.
-14. **Phase 20:** enterprise API keys, rate limits, and retention policies.
+1. **Phase 8:** text extraction and chunking.
+2. **Phase 9:** embeddings and Qdrant indexing.
+3. **Phase 10:** retrieval and metadata filtering.
+4. **Phase 11:** RAG chat, streaming, and citations.
+5. **Phase 12:** permission-aware retrieval.
+6. **Phase 13:** audit logging.
+7. **Phase 14:** administration dashboard.
+8. **Phase 15:** Next.js frontend.
+9. **Phase 16:** observability.
+10. **Phase 17:** CI/CD.
+11. **Phase 18:** Kubernetes.
+12. **Phase 19:** multi-tenancy.
+13. **Phase 20:** enterprise API keys, rate limits, and retention policies.

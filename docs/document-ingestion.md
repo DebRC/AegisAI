@@ -94,8 +94,10 @@ also removes the stored object. Restore and retention are not promised yet.
 
 Phase 7 introduces a separate processing-job lifecycle for queueing, retries,
 and worker execution. Job state is operational; `Document.status` remains a
-content-readiness state. See the [background processing design](background-processing.md)
-for the planned Phase 7 contract.
+content-readiness state. The implemented job/outbox contract is in the
+[background processing design](background-processing.md); the Phase 8
+[text extraction and chunking design](text-extraction-and-chunking.md) defines
+how a validated source later becomes `READY`.
 
 ## Metadata contract
 
