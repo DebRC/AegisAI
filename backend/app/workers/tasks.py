@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.db.database import SessionLocal
 from app.models.document import Document
 from app.services.processing_job_service import ProcessingJobService
+from app.services.processing_job_dispatcher import ProcessingJobDispatcher
 from app.storage.documents import DocumentStorageError, LocalDocumentStorage
 from app.workers.celery_app import celery_app
 
@@ -54,5 +55,20 @@ def run_source_integrity_check(processing_job_id: int) -> dict[str, str]:
         except ProcessingJobStateError:
             return {"status": "cancelled"}
         return {"status": "succeeded"}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.workers.tasks.dispatch_processing_outbox")
+def dispatch_processing_outbox() -> dict[str, int]:
+    """Publish a bounded batch of durable jobs from PostgreSQL to Redis."""
+    db = SessionLocal()
+    try:
+        dispatcher = ProcessingJobDispatcher(
+            db,
+            publish_job=lambda job_id: run_source_integrity_check.delay(job_id).id,
+        )
+        summary = dispatcher.dispatch_pending()
+        return {"published": summary.published, "deferred": summary.deferred}
     finally:
         db.close()

@@ -24,6 +24,12 @@ def create_celery_app() -> Celery:
         worker_prefetch_multiplier=1,
         task_time_limit=settings.CELERY_TASK_TIME_LIMIT_SECONDS,
         task_soft_time_limit=settings.CELERY_TASK_SOFT_TIME_LIMIT_SECONDS,
+        beat_schedule={
+            "dispatch-processing-outbox": {
+                "task": "app.workers.tasks.dispatch_processing_outbox",
+                "schedule": settings.PROCESSING_OUTBOX_DISPATCH_INTERVAL_SECONDS,
+            }
+        },
     )
     return application
 

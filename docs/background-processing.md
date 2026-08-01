@@ -181,5 +181,41 @@ remains tied to the source document:
 | `GET` | `/documents/{document_id}/processing-jobs/{job_id}` | Return one job after confirming that it belongs to the document. |
 | `POST` | `/documents/{document_id}/processing-jobs/{job_id}/retry` | Requeue one failed job when the caller has document-write permission. |
 
-Exact response schemas, pagination limits, and error mappings will be added
-with the API implementation in checkpoint 7.7.
+The implemented responses include only safe job fields: job ID/type/status,
+attempt count, timestamps, and a bounded safe failure message. They do not
+expose the storage key, outbox payload, Redis details, broker task ID, or worker
+traceback.
+
+## Running and checking Phase 7
+
+Start the complete local platform from the repository root:
+
+```bash
+docker compose up --build --force-recreate
+```
+
+The backend image runs the unit suite and the offline migration check while it
+builds. Compose then starts PostgreSQL, Qdrant, Redis, FastAPI, Celery Beat,
+and a Celery worker. A successful upload creates a queued job; Beat publishes
+pending outbox events at `PROCESSING_OUTBOX_DISPATCH_INTERVAL_SECONDS` (30
+seconds by default), and the worker records the integrity-check outcome.
+
+## Manual API check
+
+1. Start the stack, open `http://localhost:8000/docs`, and use **Authorize** to
+   paste an AegisAI access token for a user with `documents:read` and
+   `documents:write` (the administrator role has both).
+2. Use `POST /documents` to upload a supported small file. The `201` response
+   supplies the document ID.
+3. Call `GET /documents/{document_id}/processing-jobs`. It initially returns a
+   queued job, then returns `succeeded` after Beat and the worker run.
+4. Call `GET /documents/{document_id}/processing-jobs/{job_id}` to inspect one
+   safe job result. A normal integrity check leaves the document `PENDING`;
+   Phase 8 is responsible for `READY`.
+5. To exercise deletion handling, upload another file and immediately call
+   `DELETE /documents/{document_id}`. The record disappears from normal reads
+   and its unfinished job is cancelled.
+
+`POST /documents/{document_id}/processing-jobs/{job_id}/retry` is for a job in
+`FAILED` state only. It returns `409` for queued, running, succeeded, or
+cancelled work, and requires `documents:write`.
