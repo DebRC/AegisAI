@@ -1,4 +1,7 @@
-from pydantic import Field, model_validator
+from typing import Literal
+from urllib.parse import urlsplit
+
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +15,24 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str
     QDRANT_URL: str
+    QDRANT_API_KEY: SecretStr | None = None
+    QDRANT_COLLECTION_NAME: str = Field(
+        default="aegis_document_chunks_v1",
+        min_length=1,
+        max_length=255,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    QDRANT_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0, le=120)
+
+    # Phase 9 starts with OpenAI's text-embedding-3-small at its documented
+    # default of 1,536 dimensions. The provider is isolated behind an adapter
+    # so later deployments can add another explicitly configured provider.
+    EMBEDDING_PROVIDER: Literal["openai"] = "openai"
+    EMBEDDING_MODEL: str = Field(default="text-embedding-3-small", min_length=1, max_length=255)
+    EMBEDDING_VECTOR_DIMENSION: int = Field(default=1_536, ge=1, le=65_536)
+    EMBEDDING_BATCH_SIZE: int = Field(default=64, ge=1, le=1_000)
+    EMBEDDING_REQUEST_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0, le=120)
+    OPENAI_API_KEY: SecretStr | None = None
 
     DOCUMENT_STORAGE_PATH: str = "/data/documents"
     DOCUMENT_MAX_UPLOAD_BYTES: int = 25 * 1024 * 1024
@@ -64,6 +85,15 @@ class Settings(BaseSettings):
                 "DOCUMENT_CHUNK_TARGET_CHARACTERS"
             )
         return self
+
+    @field_validator("QDRANT_URL")
+    @classmethod
+    def validate_qdrant_url(cls, value: str) -> str:
+        """Accept only complete HTTP(S) endpoints for the vector-store client."""
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("QDRANT_URL must be an absolute HTTP(S) URL")
+        return value.rstrip("/")
 
     model_config = SettingsConfigDict(
         env_file=".env",

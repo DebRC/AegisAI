@@ -76,10 +76,12 @@ preserve input order. The indexing service rejects empty responses, non-finite
 values, count mismatches, and dimension mismatches before writing an embedding
 record or marking a job successful.
 
-The first implementation will use one explicitly configured provider and model;
-the chosen provider's API key stays in environment configuration and is never
-stored in PostgreSQL or sent to the browser. Test doubles will implement the
-same interface, so tests do not require a network call or paid credentials.
+The first implementation uses OpenAI `text-embedding-3-small` at its documented
+default of 1,536 dimensions. Its API key stays in environment configuration and
+is never stored in PostgreSQL or sent to the browser. Test doubles will
+implement the same interface, so tests do not require a network call or paid
+credentials. The provider boundary remains replaceable for a later deployment
+choice.
 
 Qdrant collections have an immutable vector dimension and distance metric. The
 active collection therefore has these rules:
@@ -92,9 +94,11 @@ active collection therefore has these rules:
 - changing provider/model/dimension requires a new collection and a deliberate
   reindex, not an in-place rewrite of existing points.
 
-The actual provider name, model, collection name, dimension, request timeout,
-and batch limits will be added as validated environment settings in checkpoint
-9.2. No secret is introduced by this contract checkpoint.
+The provider name, model, collection name, dimension, request timeout, and
+batch limits are validated environment settings. `QDRANT_API_KEY` and
+`OPENAI_API_KEY` are optional secret settings: they remain empty for the local
+Docker Qdrant service and until an embedding worker is explicitly enabled. No
+secret is introduced by version control.
 
 ## Identity and idempotency
 
@@ -171,7 +175,7 @@ any user can receive semantic search results or citations.
 ## Delivery checkpoints
 
 - [x] 9.1 Embedding and indexing contract
-- [ ] 9.2 Qdrant configuration and runtime client
+- [x] 9.2 Qdrant configuration and runtime client
 - [ ] 9.3 Embedding persistence and migration
 - [ ] 9.4 Embedding-provider abstraction
 - [ ] 9.5 Qdrant collection and vector operations
