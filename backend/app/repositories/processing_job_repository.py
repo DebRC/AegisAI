@@ -47,6 +47,24 @@ class ProcessingJobRepository:
             )
         )
 
+    def has_nonterminal_for_document_and_type(
+        self,
+        *,
+        document_id: int,
+        job_type: str,
+    ) -> bool:
+        return self.db.scalar(
+            select(ProcessingJob.id)
+            .where(
+                ProcessingJob.document_id == document_id,
+                ProcessingJob.job_type == job_type,
+                ProcessingJob.status.in_(
+                    [ProcessingJobStatus.QUEUED, ProcessingJobStatus.RUNNING]
+                ),
+            )
+            .limit(1)
+        ) is not None
+
     def claim_queued(
         self,
         *,

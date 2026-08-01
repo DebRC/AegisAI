@@ -197,5 +197,5 @@ model.
 5. [x] Implement cleaning and deterministic chunking (8.5).
 6. [x] Run extraction in the worker with atomic persistence and reprocessing
    semantics (8.6).
-7. [ ] Add authorized status, chunk-inspection, and reprocess APIs (8.7).
+7. [x] Add authorized status, chunk-inspection, and reprocess APIs (8.7).
 8. [ ] Complete tests, Docker verification, and consolidated documentation (8.8).

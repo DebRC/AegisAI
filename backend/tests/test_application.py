@@ -18,10 +18,12 @@ from app.api import protected as protected_api
 from app.api import rbac as rbac_api
 from app.api.dependencies import get_auth_service
 from app.api.dependencies import get_document_service
+from app.api.dependencies import get_document_extraction_query_service
 from app.api.dependencies import get_rbac_service
 from app.api.dependencies import get_sso_account_service
 from app.core.exceptions import AuthenticationError
 from app.core.exceptions import DocumentNotFoundError
+from app.core.exceptions import DocumentExtractionNotFoundError
 from app.core.exceptions import DocumentPersistenceError
 from app.core.exceptions import DocumentValidationError
 from app.core.exceptions import RoleAlreadyExistsError
@@ -40,6 +42,7 @@ from app.security.constants import TokenType
 from app.security.permissions import PermissionCode
 from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
+from app.services.document_extraction_query_service import DocumentExtractionQueryService
 from app.services.rbac_service import RbacService
 from app.services.sso_account_service import SsoAccountService
 from app.storage.documents import DocumentStorageError
@@ -66,6 +69,10 @@ class ApplicationTests(unittest.TestCase):
         self.assertIsInstance(
             get_document_service(session, Mock()),
             DocumentService,
+        )
+        self.assertIsInstance(
+            get_document_extraction_query_service(session),
+            DocumentExtractionQueryService,
         )
 
     def test_current_user_and_permission_dependencies(self) -> None:
@@ -134,6 +141,9 @@ class ApplicationTests(unittest.TestCase):
             ("/documents/{document_id}", "GET"): PermissionCode.DOCUMENTS_READ,
             ("/documents/{document_id}", "PATCH"): PermissionCode.DOCUMENTS_WRITE,
             ("/documents/{document_id}", "DELETE"): PermissionCode.DOCUMENTS_WRITE,
+            ("/documents/{document_id}/extraction", "GET"): PermissionCode.DOCUMENTS_READ,
+            ("/documents/{document_id}/extraction/chunks", "GET"): PermissionCode.DOCUMENTS_READ,
+            ("/documents/{document_id}/reprocess", "POST"): PermissionCode.DOCUMENTS_WRITE,
             ("/documents/{document_id}/processing-jobs", "GET"): PermissionCode.DOCUMENTS_READ,
             ("/documents/{document_id}/processing-jobs/{job_id}", "GET"): PermissionCode.DOCUMENTS_READ,
             ("/documents/{document_id}/processing-jobs/{job_id}/retry", "POST"): PermissionCode.DOCUMENTS_WRITE,
@@ -186,6 +196,14 @@ class ApplicationTests(unittest.TestCase):
         self.assertIn(
             {"OAuth2PasswordBearer": []},
             document_paths["/documents/{document_id}"]["patch"]["security"],
+        )
+        self.assertIn(
+            {"AegisAI access token": []},
+            document_paths["/documents/{document_id}/extraction"]["get"]["security"],
+        )
+        self.assertIn(
+            "202",
+            document_paths["/documents/{document_id}/reprocess"]["post"]["responses"],
         )
 
     def test_basic_routes_and_lifespan(self) -> None:
@@ -355,3 +373,49 @@ class ApplicationTests(unittest.TestCase):
             ).status_code,
             503,
         )
+        self.assertEqual(
+            documents_api._document_error_to_http_exception(
+                DocumentExtractionNotFoundError()
+            ).status_code,
+            404,
+        )
+
+    def test_document_extraction_route_handlers(self) -> None:
+        service = Mock()
+        now = datetime.now(timezone.utc)
+        extraction = SimpleNamespace(
+            id=8,
+            document_id=3,
+            character_count=31,
+            extractor_version="phase8-v1",
+            extracted_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        chunk = SimpleNamespace(
+            id=11,
+            ordinal=0,
+            content="Security policy",
+            start_offset=0,
+            end_offset=15,
+            source_locations=None,
+            created_at=now,
+            updated_at=now,
+        )
+        job = SimpleNamespace(id=9)
+        service.get_extraction.return_value = extraction
+        service.list_chunks.return_value = SimpleNamespace(
+            items=[chunk], offset=0, limit=25, total=1
+        )
+        service.request_reprocessing.return_value = job
+
+        self.assertIs(documents_api.get_document_extraction(3, service), extraction)
+        page = documents_api.list_document_chunks(3, 0, 25, service)
+        self.assertEqual([item.id for item in page.items], [chunk.id])
+        self.assertEqual(page.total, 1)
+        self.assertIs(documents_api.reprocess_document(3, service, Mock()), job)
+
+        service.get_extraction.side_effect = DocumentExtractionNotFoundError()
+        with self.assertRaises(HTTPException) as context:
+            documents_api.get_document_extraction(3, service)
+        self.assertEqual(context.exception.status_code, 404)

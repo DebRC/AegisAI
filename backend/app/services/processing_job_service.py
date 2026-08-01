@@ -62,6 +62,38 @@ class ProcessingJobService:
             timestamp=now or self._now(),
         )
 
+    def request_text_reprocessing(
+        self,
+        *,
+        document_id: int,
+        now: datetime | None = None,
+    ) -> ProcessingJob:
+        """Queue one replacement extraction while retaining current output."""
+        document = self.documents.get_active_by_id_for_update(document_id)
+        if document is None:
+            raise DocumentNotFoundError()
+        if (
+            document.status != DocumentStatus.READY
+            or self.jobs.has_nonterminal_for_document_and_type(
+                document_id=document_id,
+                job_type=self.TEXT_EXTRACTION_JOB_TYPE,
+            )
+        ):
+            raise ProcessingJobStateError()
+        try:
+            job = self._create_queued_job(
+                document_id=document.id,
+                job_type=self.TEXT_EXTRACTION_JOB_TYPE,
+                timestamp=now or self._now(),
+            )
+            self._commit()
+            return job
+        except ProcessingJobPersistenceError:
+            raise
+        except Exception as error:
+            self.db.rollback()
+            raise ProcessingJobPersistenceError() from error
+
     def get_document_job(self, *, document_id: int, job_id: int) -> ProcessingJob:
         job = self.jobs.get_by_document_and_id(document_id=document_id, job_id=job_id)
         if job is None:

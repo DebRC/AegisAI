@@ -10,8 +10,10 @@ from fastapi import UploadFile
 from fastapi import status
 
 from app.api.dependencies import get_document_service
+from app.api.dependencies import get_document_extraction_query_service
 from app.api.dependencies import get_processing_job_service
 from app.core.exceptions import DocumentNotFoundError
+from app.core.exceptions import DocumentExtractionNotFoundError
 from app.core.exceptions import DocumentPersistenceError
 from app.core.exceptions import DocumentValidationError
 from app.core.exceptions import ProcessingJobNotFoundError
@@ -19,6 +21,8 @@ from app.core.exceptions import ProcessingJobPersistenceError
 from app.core.exceptions import ProcessingJobStateError
 from app.models.user import User
 from app.schemas.document import DocumentListResponse
+from app.schemas.document import DocumentChunkListResponse
+from app.schemas.document import DocumentExtractionResponse
 from app.schemas.document import DocumentRenameRequest
 from app.schemas.document import DocumentResponse
 from app.schemas.document import ProcessingJobListResponse
@@ -26,6 +30,7 @@ from app.schemas.document import ProcessingJobResponse
 from app.security.dependencies import require_permission
 from app.security.permissions import PermissionCode
 from app.services.document_service import DocumentService
+from app.services.document_extraction_query_service import DocumentExtractionQueryService
 from app.services.processing_job_service import ProcessingJobService
 from app.storage.documents import DocumentStorageError
 from app.storage.documents import EmptyDocumentError
@@ -53,11 +58,20 @@ def _document_error_to_http_exception(error: Exception) -> HTTPException:
             detail="Document not found",
         )
 
+    if isinstance(error, DocumentExtractionNotFoundError):
+        return HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document extraction not found",
+        )
+
     if isinstance(error, ProcessingJobNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Processing job not found")
 
     if isinstance(error, ProcessingJobStateError):
-        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Processing job cannot be retried")
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document processing operation cannot be completed",
+        )
 
     if isinstance(error, (DocumentPersistenceError, ProcessingJobPersistenceError, DocumentStorageError)):
         return HTTPException(
@@ -132,6 +146,68 @@ def get_document(
     try:
         return service.get_document(document_id)
     except DocumentNotFoundError as error:
+        raise _document_error_to_http_exception(error) from error
+
+
+@router.get(
+    "/{document_id}/extraction",
+    response_model=DocumentExtractionResponse,
+    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
+)
+def get_document_extraction(
+    document_id: int,
+    service: DocumentExtractionQueryService = Depends(get_document_extraction_query_service),
+) -> DocumentExtractionResponse:
+    try:
+        return service.get_extraction(document_id)
+    except (DocumentNotFoundError, DocumentExtractionNotFoundError) as error:
+        raise _document_error_to_http_exception(error) from error
+
+
+@router.get(
+    "/{document_id}/extraction/chunks",
+    response_model=DocumentChunkListResponse,
+    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
+)
+def list_document_chunks(
+    document_id: int,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=100),
+    service: DocumentExtractionQueryService = Depends(get_document_extraction_query_service),
+) -> DocumentChunkListResponse:
+    try:
+        page = service.list_chunks(document_id=document_id, offset=offset, limit=limit)
+        return DocumentChunkListResponse(
+            items=page.items,
+            offset=page.offset,
+            limit=page.limit,
+            total=page.total,
+        )
+    except (
+        DocumentValidationError,
+        DocumentNotFoundError,
+        DocumentExtractionNotFoundError,
+    ) as error:
+        raise _document_error_to_http_exception(error) from error
+
+
+@router.post(
+    "/{document_id}/reprocess",
+    response_model=ProcessingJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def reprocess_document(
+    document_id: int,
+    service: DocumentExtractionQueryService = Depends(get_document_extraction_query_service),
+    _: User = Depends(require_permission(PermissionCode.DOCUMENTS_WRITE)),
+) -> ProcessingJobResponse:
+    try:
+        return service.request_reprocessing(document_id)
+    except (
+        DocumentNotFoundError,
+        ProcessingJobPersistenceError,
+        ProcessingJobStateError,
+    ) as error:
         raise _document_error_to_http_exception(error) from error
 
 
