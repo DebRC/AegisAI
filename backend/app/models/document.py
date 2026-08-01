@@ -94,3 +94,9 @@ class Document(Base):
     processing_jobs: Mapped[list["ProcessingJob"]] = relationship(
         back_populates="document",
     )
+
+    extraction: Mapped["DocumentExtraction | None"] = relationship(
+        back_populates="document",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
