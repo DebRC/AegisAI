@@ -5,6 +5,7 @@ from sqlalchemy import CheckConstraint
 from sqlalchemy import DateTime
 from sqlalchemy import ForeignKey
 from sqlalchemy import Integer
+from sqlalchemy import Index
 from sqlalchemy import JSON
 from sqlalchemy import String
 from sqlalchemy import Text
@@ -116,4 +117,82 @@ class DocumentChunk(Base):
 
     extraction: Mapped["DocumentExtraction"] = relationship(
         back_populates="chunks",
+    )
+
+    embeddings: Mapped[list["DocumentChunkEmbedding"]] = relationship(
+        back_populates="chunk",
+        cascade="all, delete-orphan",
+    )
+
+
+class DocumentChunkEmbedding(Base):
+    """Durable pointer from an authoritative chunk to a derived Qdrant point."""
+
+    __tablename__ = "document_chunk_embeddings"
+    __table_args__ = (
+        Index("ix_document_chunk_embeddings_chunk_id", "document_chunk_id"),
+        CheckConstraint("vector_dimension > 0", name="ck_document_chunk_embeddings_dimension_positive"),
+        CheckConstraint("length(point_id) = 36", name="ck_document_chunk_embeddings_point_id_uuid_length"),
+        UniqueConstraint(
+            "document_chunk_id",
+            "provider",
+            "model",
+            "collection_name",
+            name="uq_document_chunk_embeddings_chunk_provider_model_collection",
+        ),
+        UniqueConstraint(
+            "collection_name",
+            "point_id",
+            name="uq_document_chunk_embeddings_collection_point_id",
+        ),
+    )
+
+    document_chunk_id: Mapped[int] = mapped_column(
+        ForeignKey("document_chunks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # These values identify the derived index shape. They are deliberately
+    # stored with the point so changing provider/model/collection requires an
+    # explicit reindex rather than silently mixing incompatible vectors.
+    provider: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+
+    model: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    collection_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    # Qdrant accepts UUID point identifiers. The later indexing service derives
+    # this value deterministically, enabling idempotent upserts and cleanup.
+    point_id: Mapped[str] = mapped_column(
+        String(36),
+        nullable=False,
+    )
+
+    vector_dimension: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    # A vector is current only when this checksum still matches its chunk.
+    content_sha256: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+
+    indexed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+    chunk: Mapped["DocumentChunk"] = relationship(
+        back_populates="embeddings",
     )

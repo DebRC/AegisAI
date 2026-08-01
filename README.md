@@ -41,7 +41,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 6 — Document ingestion | Complete | Secure local storage, upload validation, metadata lifecycle, RBAC enforcement, and document-management APIs. |
 | Phase 7 — Background processing | Complete | Redis/Celery runtime, durable outbox delivery, worker integrity checks, job status, retry, and cancellation. |
 | Phase 8 — Text extraction and chunking | Complete | Safe TXT/Markdown/PDF/DOCX extraction, normalized traceable chunks, worker lifecycle, reprocessing, and RBAC-protected inspection APIs. |
-| Phase 9 — Embeddings and Qdrant indexing | In progress | The indexing contract is defined; provider configuration, vector persistence, workers, and tests follow. |
+| Phase 9 — Embeddings and Qdrant indexing | In progress | Contract, configuration, and traceable vector records are ready; provider, indexing workers, and tests follow. |
 | Phases 10–12 — Retrieval and RAG | Planned | Metadata-filtered retrieval, streaming chat with citations, and permission-aware retrieval. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |

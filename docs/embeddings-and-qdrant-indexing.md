@@ -176,7 +176,7 @@ any user can receive semantic search results or citations.
 
 - [x] 9.1 Embedding and indexing contract
 - [x] 9.2 Qdrant configuration and runtime client
-- [ ] 9.3 Embedding persistence and migration
+- [x] 9.3 Embedding persistence and migration
 - [ ] 9.4 Embedding-provider abstraction
 - [ ] 9.5 Qdrant collection and vector operations
 - [ ] 9.6 Background indexing pipeline
