@@ -11,6 +11,11 @@ from app.extraction.exceptions import TextExtractionError
 from app.extraction.exceptions import TextExtractionProviderError
 from app.extraction.exceptions import UnsupportedDocumentTypeError
 from app.extraction.base import TextExtractor
+from app.extraction.processing import NormalizedText
+from app.extraction.processing import NormalizedTextSpan
+from app.extraction.processing import TextChunk
+from app.extraction.processing import TextChunker
+from app.extraction.processing import TextNormalizer
 from app.extraction.registry import TextExtractorRegistry
 
 __all__ = [
@@ -19,11 +24,16 @@ __all__ = [
     "ExtractedTextBlock",
     "ExtractedTextLimitExceededError",
     "NoExtractableTextError",
+    "NormalizedText",
+    "NormalizedTextSpan",
     "SourceLocation",
+    "TextChunk",
+    "TextChunker",
     "TextDecodingError",
     "TextExtractionError",
     "TextExtractionProviderError",
     "TextExtractor",
     "TextExtractorRegistry",
+    "TextNormalizer",
     "UnsupportedDocumentTypeError",
 ]

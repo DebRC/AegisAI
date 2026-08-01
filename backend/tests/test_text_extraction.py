@@ -13,6 +13,9 @@ from app.extraction.exceptions import TextDecodingError
 from app.extraction.exceptions import TextExtractionProviderError
 from app.extraction.exceptions import UnsupportedDocumentTypeError
 from app.extraction.extractors import DocxTextExtractor, PdfTextExtractor, Utf8TextExtractor
+from app.extraction.processing import TextChunker
+from app.extraction.processing import TextNormalizer
+from app.extraction.processing import TextChunk
 from app.extraction.registry import TextExtractorRegistry
 
 
@@ -151,6 +154,80 @@ class TextExtractorRegistryTests(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises(ValueError):
                     TextExtractorRegistry(value)
+
+
+class TextNormalizationAndChunkingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.normalizer = TextNormalizer()
+
+    def test_normalizes_blocks_and_preserves_source_spans(self) -> None:
+        extracted = ExtractedText(
+            blocks=(
+                ExtractedTextBlock("First\r\nline\x00\n\n\n\n", SourceLocation("page", 1)),
+                ExtractedTextBlock("\tSecond\n\n\nthird", SourceLocation("page", 2)),
+            )
+        )
+
+        normalized = self.normalizer.normalize(extracted)
+
+        self.assertEqual(normalized.text, "First\nline\n\nSecond\n\nthird")
+        self.assertEqual(normalized.spans[0].start_offset, 0)
+        self.assertEqual(normalized.spans[0].end_offset, len("First\nline"))
+        self.assertEqual(normalized.spans[1].source_location, SourceLocation("page", 2))
+        self.assertEqual(
+            normalized.source_locations_for_range(
+                start_offset=0,
+                end_offset=len(normalized.text),
+            ),
+            (SourceLocation("page", 1), SourceLocation("page", 2)),
+        )
+
+    def test_chunks_at_preferred_boundaries_with_exact_offsets_and_locations(self) -> None:
+        normalized = self.normalizer.normalize(
+            ExtractedText(
+                blocks=(
+                    ExtractedTextBlock("First paragraph.", SourceLocation("page", 1)),
+                    ExtractedTextBlock("Second paragraph. Third sentence.", SourceLocation("page", 2)),
+                )
+            )
+        )
+
+        chunks = TextChunker(target_characters=22, overlap_characters=5).chunk(normalized)
+
+        self.assertGreaterEqual(len(chunks), 2)
+        self.assertEqual([chunk.ordinal for chunk in chunks], list(range(len(chunks))))
+        self.assertEqual(chunks[0].content, "First paragraph.")
+        self.assertEqual(chunks[0].source_locations, (SourceLocation("page", 1),))
+        self.assertIn(SourceLocation("page", 2), chunks[-1].source_locations)
+        for chunk in chunks:
+            self.assertLessEqual(len(chunk.content), 22)
+            self.assertEqual(
+                chunk.content,
+                normalized.text[chunk.start_offset:chunk.end_offset],
+            )
+        for previous, following in zip(chunks, chunks[1:]):
+            self.assertLessEqual(following.start_offset, previous.end_offset)
+
+    def test_hard_splits_long_unbroken_text_and_validates_configuration(self) -> None:
+        normalized = self.normalizer.normalize(
+            ExtractedText(blocks=(ExtractedTextBlock("ABCDEFGHIJK"),))
+        )
+
+        chunks = TextChunker(target_characters=5, overlap_characters=2).chunk(normalized)
+
+        self.assertEqual([chunk.content for chunk in chunks], ["ABCDE", "DEFGH", "GHIJK"])
+        for target, overlap in ((0, 0), (5, -1), (5, 5), (True, 0)):
+            with self.subTest(target=target, overlap=overlap):
+                with self.assertRaises(ValueError):
+                    TextChunker(target, overlap)
+        with self.assertRaises(ValueError):
+            TextChunk(
+                ordinal=0,
+                content="text",
+                start_offset=4,
+                end_offset=4,
+                source_locations=(),
+            )
 
 
 class TextExtractionConfigurationTests(unittest.TestCase):
