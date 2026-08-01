@@ -126,17 +126,18 @@ introduced by version control.
 ## Identity and idempotency
 
 The service derives a stable Qdrant point UUID from the embedding identity
-(chunk ID, provider, model, and collection). It will persist that UUID before
-claiming an indexing run and use Qdrant upsert semantics. Repeating the same
-job therefore writes the same logical point rather than accumulating another
-one.
+(chunk ID, provider, model, and collection) and uses Qdrant upsert semantics.
+Repeating the same job therefore writes the same logical point rather than
+accumulating another one.
 
 The content checksum is part of the validity check, not the point identity. If
-reprocessing replaces an extraction, its old chunk rows and embedding records
-are no longer current. The pipeline will enqueue durable cleanup for their old
-point IDs and index the new chunks under their new chunk IDs. A vector is usable
-only when all of these agree: the document is active, the extraction/chunk is
-current, the embedding record is current, and its checksum matches the chunk.
+reprocessing replaces an extraction or a document is deleted, the pipeline
+captures old point IDs in durable collection-scoped cleanup requests before
+chunk rows cascade-delete. A cleanup worker deletes those IDs using their
+original collection name and records a retryable job result. Reprocessing is
+blocked while indexing or cleanup is non-terminal, avoiding replacement races.
+New chunks receive new point IDs; a vector is usable only when its document,
+extraction/chunk, embedding record, and checksum all remain current.
 
 ## Processing lifecycle
 
@@ -155,6 +156,11 @@ text_extraction succeeds
           ├── succeeded: all current chunks have valid Qdrant points
           ├── failed: document remains READY; safe job error is visible and retryable
           └── cancelled: document was deleted or its work became superseded
+
+replacement or deletion
+  └── create vector_cleanup job(s) + point-ID request(s) in the same transaction
+          ├── succeeded: obsolete points are removed
+          └── failed: safe error is retryable; no document status is changed
 ```
 
 This separation means a document is never reported as text-extraction failed
@@ -203,6 +209,6 @@ any user can receive semantic search results or citations.
 - [x] 9.4 Embedding-provider abstraction
 - [x] 9.5 Qdrant collection and vector operations
 - [x] 9.6 Background indexing pipeline
-- [ ] 9.7 Reprocessing, idempotency, and cleanup
+- [x] 9.7 Reprocessing, idempotency, and cleanup
 - [ ] 9.8 Status visibility and authorization
 - [ ] 9.9 Tests, Docker verification, and documentation

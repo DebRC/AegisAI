@@ -14,6 +14,9 @@ from app.models import Document
 from app.models import DocumentChunk
 from app.models import DocumentExtraction
 from app.models import DocumentStatus
+from app.models import DocumentChunkEmbedding
+from app.models import ProcessingJob
+from app.models import VectorCleanupRequest
 from app.repositories.document_repository import DocumentRepository
 from app.services.document_service import DocumentService
 from app.schemas.document import DocumentResponse
@@ -322,11 +325,33 @@ class DocumentServiceTests(DatabaseTestCase, unittest.TestCase):
             )
         )
         self.session.commit()
+        extraction = self.session.query(DocumentExtraction).one()
+        self.session.add(
+            DocumentChunkEmbedding(
+                document_chunk_id=extraction.chunks[0].id,
+                provider="openai",
+                model="text-embedding-3-small",
+                collection_name="retired_collection",
+                point_id="10c4d748-1db2-477f-bf4c-47e72ef76e2c",
+                vector_dimension=1536,
+                content_sha256="a" * 64,
+                indexed_at=datetime.now(timezone.utc),
+            )
+        )
+        self.session.commit()
 
         service.delete_document(document.id)
 
         self.assertEqual(self.session.query(DocumentExtraction).count(), 0)
         self.assertEqual(self.session.query(DocumentChunk).count(), 0)
+        cleanup_job = self.session.query(ProcessingJob).filter_by(
+            document_id=document.id,
+            job_type="vector_cleanup",
+        ).one()
+        cleanup_request = self.session.query(VectorCleanupRequest).filter_by(
+            processing_job_id=cleanup_job.id,
+        ).one()
+        self.assertEqual(cleanup_request.point_ids, ["10c4d748-1db2-477f-bf4c-47e72ef76e2c"])
 
     def test_rename_rejects_blank_title(self) -> None:
         service = DocumentService(self.session, self.storage)

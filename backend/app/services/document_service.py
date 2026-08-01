@@ -124,6 +124,7 @@ class DocumentService:
 
         try:
             self.processing_jobs.cancel_document_jobs(document_id=document.id)
+            self.processing_jobs.queue_vector_cleanup_for_document(document_id=document.id)
             self.extractions.delete_by_document_id(document.id)
             document.deleted_at = datetime.now(timezone.utc)
             self.documents.update()

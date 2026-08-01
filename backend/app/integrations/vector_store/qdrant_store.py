@@ -86,9 +86,15 @@ class QdrantVectorPoint:
 class QdrantVectorStore:
     """Own the compatible collection contract and idempotent point operations."""
 
-    def __init__(self, client: QdrantClient, configuration: Settings) -> None:
+    def __init__(
+        self,
+        client: QdrantClient,
+        configuration: Settings,
+        *,
+        collection_name: str | None = None,
+    ) -> None:
         self._client = client
-        self._collection_name = configuration.QDRANT_COLLECTION_NAME
+        self._collection_name = collection_name or configuration.QDRANT_COLLECTION_NAME
         self._vector_dimension = configuration.EMBEDDING_VECTOR_DIMENSION
 
     def ensure_collection(self) -> None:

@@ -5,7 +5,7 @@ from app.extraction.base import ExtractedText, ExtractedTextBlock, SourceLocatio
 from app.extraction.exceptions import NoExtractableTextError
 from app.extraction.processing import TextChunker, TextNormalizer
 from app.extraction.registry import TextExtractorRegistry
-from app.models import Document, DocumentChunk, DocumentExtraction, DocumentStatus, ProcessingJob, ProcessingJobStatus
+from app.models import Document, DocumentChunk, DocumentChunkEmbedding, DocumentExtraction, DocumentStatus, ProcessingJob, ProcessingJobStatus, VectorCleanupRequest
 from app.services.processing_job_service import ProcessingJobService
 from app.services.text_extraction_service import TextExtractionService
 from tests.helpers import DatabaseTestCase
@@ -108,6 +108,19 @@ class TextExtractionServiceTests(DatabaseTestCase, unittest.TestCase):
         self.session.add(old_extraction)
         self.document.status = DocumentStatus.READY
         self.session.commit()
+        self.session.add(
+            DocumentChunkEmbedding(
+                document_chunk_id=old_extraction.chunks[0].id,
+                provider="openai",
+                model="text-embedding-3-small",
+                collection_name="retired_collection",
+                point_id="cc38c86d-a5b7-4c25-98cf-759291d7fbc9",
+                vector_dimension=1536,
+                content_sha256="b" * 64,
+                indexed_at=datetime.now(timezone.utc),
+            )
+        )
+        self.session.commit()
         job = self._queued_text_job()
         service = self._service(ExtractedText(blocks=(ExtractedTextBlock("New policy text"),)))
 
@@ -115,6 +128,9 @@ class TextExtractionServiceTests(DatabaseTestCase, unittest.TestCase):
         self.assertEqual(self.session.query(DocumentExtraction).count(), 1)
         self.assertEqual(self.session.query(DocumentExtraction).one().normalized_text, "New policy text")
         self.assertEqual(self.document.status, DocumentStatus.READY)
+        cleanup_request = self.session.query(VectorCleanupRequest).one()
+        self.assertEqual(cleanup_request.collection_name, "retired_collection")
+        self.assertEqual(cleanup_request.point_ids, ["cc38c86d-a5b7-4c25-98cf-759291d7fbc9"])
 
     def test_deleted_document_is_cancelled_without_reading_source(self) -> None:
         job = self._queued_text_job()

@@ -112,5 +112,23 @@ class ProcessingJobRepository:
         )
         return result.rowcount or 0
 
+    def has_nonterminal_for_document_and_types(
+        self,
+        *,
+        document_id: int,
+        job_types: list[str],
+    ) -> bool:
+        return self.db.scalar(
+            select(ProcessingJob.id)
+            .where(
+                ProcessingJob.document_id == document_id,
+                ProcessingJob.job_type.in_(job_types),
+                ProcessingJob.status.in_(
+                    [ProcessingJobStatus.QUEUED, ProcessingJobStatus.RUNNING]
+                ),
+            )
+            .limit(1)
+        ) is not None
+
     def update(self) -> None:
         self.db.flush()

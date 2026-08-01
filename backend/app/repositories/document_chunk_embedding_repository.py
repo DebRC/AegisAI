@@ -31,3 +31,17 @@ class DocumentChunkEmbeddingRepository:
             existing.content_sha256 = embedding.content_sha256
             existing.indexed_at = embedding.indexed_at
         self.db.flush()
+
+    def list_by_document_id(self, document_id: int) -> list[DocumentChunkEmbedding]:
+        """Return current derived pointers before a document extraction is replaced."""
+        from app.models.document_extraction import DocumentChunk
+        from app.models.document_extraction import DocumentExtraction
+
+        return list(
+            self.db.scalars(
+                select(DocumentChunkEmbedding)
+                .join(DocumentChunk)
+                .join(DocumentExtraction)
+                .where(DocumentExtraction.document_id == document_id)
+            )
+        )

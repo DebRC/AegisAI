@@ -13,6 +13,7 @@ from app.models.document import Document
 from app.services.processing_job_service import ProcessingJobService
 from app.services.processing_job_dispatcher import ProcessingJobDispatcher
 from app.services.embedding_indexing_service import EmbeddingIndexingService
+from app.services.vector_cleanup_service import VectorCleanupService
 from app.services.text_extraction_service import TextExtractionService
 from app.integrations.vector_store.qdrant_client import create_qdrant_client
 from app.integrations.vector_store.qdrant_store import QdrantVectorStore
@@ -113,6 +114,24 @@ def run_embedding_indexing(processing_job_id: int) -> dict[str, str]:
         db.close()
 
 
+@celery_app.task(name="app.workers.tasks.run_vector_cleanup")
+def run_vector_cleanup(processing_job_id: int) -> dict[str, str]:
+    """Remove obsolete derived points through a durable cleanup request."""
+    db = SessionLocal()
+    try:
+        service = VectorCleanupService(
+            db,
+            create_vector_store=lambda collection_name: QdrantVectorStore(
+                create_qdrant_client(settings),
+                settings,
+                collection_name=collection_name,
+            ),
+        )
+        return {"status": service.process(processing_job_id)}
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.workers.tasks.dispatch_processing_outbox")
 def dispatch_processing_outbox() -> dict[str, int]:
     """Publish a bounded batch of durable jobs from PostgreSQL to Redis."""
@@ -136,4 +155,6 @@ def _publish_processing_job(job_type: str, processing_job_id: int) -> str:
         return run_text_extraction.delay(processing_job_id).id
     if job_type == ProcessingJobService.EMBEDDING_INDEXING_JOB_TYPE:
         return run_embedding_indexing.delay(processing_job_id).id
+    if job_type == ProcessingJobService.VECTOR_CLEANUP_JOB_TYPE:
+        return run_vector_cleanup.delay(processing_job_id).id
     raise ValueError("No worker task is registered for this processing job type")

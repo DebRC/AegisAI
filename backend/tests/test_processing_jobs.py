@@ -102,6 +102,18 @@ class ProcessingJobTests(DatabaseTestCase, unittest.TestCase):
         self.assertEqual(task_id, "embedding-task-1")
         delay.assert_called_once_with(42)
 
+    @patch("app.workers.tasks.run_vector_cleanup.delay")
+    def test_vector_cleanup_jobs_are_routed_to_the_dedicated_worker_task(self, delay) -> None:
+        delay.return_value.id = "cleanup-task-1"
+
+        task_id = _publish_processing_job(
+            ProcessingJobService.VECTOR_CLEANUP_JOB_TYPE,
+            processing_job_id=43,
+        )
+
+        self.assertEqual(task_id, "cleanup-task-1")
+        delay.assert_called_once_with(43)
+
     def test_failure_retry_and_cancellation(self) -> None:
         service = ProcessingJobService(self.session)
         job = service.create_source_integrity_job(document_id=self.document.id, now=self.now)
