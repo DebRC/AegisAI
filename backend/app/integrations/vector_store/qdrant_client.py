@@ -13,8 +13,11 @@ def create_qdrant_client(configuration: Settings) -> QdrantClient:
     validation and vector operations belong to later Phase 9 checkpoints.
     """
     api_key = configuration.QDRANT_API_KEY
+    # Docker Compose exposes an empty ``QDRANT_API_KEY=`` as a real empty
+    # string. Qdrant's local unauthenticated service expects no key at all.
+    secret = api_key.get_secret_value().strip() if api_key is not None else ""
     return QdrantClient(
         url=configuration.QDRANT_URL,
-        api_key=api_key.get_secret_value() if api_key is not None else None,
+        api_key=secret or None,
         timeout=configuration.QDRANT_TIMEOUT_SECONDS,
     )

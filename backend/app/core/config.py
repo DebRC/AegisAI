@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     EMBEDDING_VECTOR_DIMENSION: int = Field(default=1_536, ge=1, le=65_536)
     EMBEDDING_BATCH_SIZE: int = Field(default=64, ge=1, le=1_000)
     EMBEDDING_REQUEST_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0, le=120)
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_API_KEY: SecretStr | None = None
 
     DOCUMENT_STORAGE_PATH: str = "/data/documents"
@@ -93,6 +94,15 @@ class Settings(BaseSettings):
         parsed = urlsplit(value)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("QDRANT_URL must be an absolute HTTP(S) URL")
+        return value.rstrip("/")
+
+    @field_validator("OPENAI_BASE_URL")
+    @classmethod
+    def validate_openai_base_url(cls, value: str) -> str:
+        """Accept only complete HTTP(S) endpoints for the embedding provider."""
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("OPENAI_BASE_URL must be an absolute HTTP(S) URL")
         return value.rstrip("/")
 
     model_config = SettingsConfigDict(

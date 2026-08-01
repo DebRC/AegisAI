@@ -40,6 +40,7 @@ class VectorStoreConfigurationTests(unittest.TestCase):
             {"EMBEDDING_VECTOR_DIMENSION": 0},
             {"EMBEDDING_BATCH_SIZE": 0},
             {"EMBEDDING_REQUEST_TIMEOUT_SECONDS": 121},
+            {"OPENAI_BASE_URL": "api.openai.com/v1"},
         )
 
         for overrides in invalid_values:
@@ -75,6 +76,6 @@ class QdrantClientFactoryTests(unittest.TestCase):
 
     @patch("app.integrations.vector_store.qdrant_client.QdrantClient")
     def test_uses_no_api_key_for_the_local_unauthenticated_service(self, client_class) -> None:
-        create_qdrant_client(Settings(**self._REQUIRED_SETTINGS))
+        create_qdrant_client(Settings(**(self._REQUIRED_SETTINGS | {"QDRANT_API_KEY": ""})))
 
         self.assertIsNone(client_class.call_args.kwargs["api_key"])

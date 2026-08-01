@@ -64,17 +64,19 @@ PostgreSQL.
 
 ## Provider and collection contract
 
-The application will depend on an `EmbeddingProvider` interface rather than a
+The application depends on an `EmbeddingProvider` interface rather than a
 vendor SDK in worker or service code. Its contract is:
 
 ```text
 embed(texts) -> ordered vectors + provider identifier + model identifier
 ```
 
-The provider must return exactly one finite, numeric vector per input text and
-preserve input order. The indexing service rejects empty responses, non-finite
-values, count mismatches, and dimension mismatches before writing an embedding
-record or marking a job successful.
+The provider returns exactly one finite, numeric vector per input text and
+preserves input order. The OpenAI adapter sends the configured model, requested
+dimension, and float encoding to the Embeddings API; it then reorders results by
+the provider's returned input index. It rejects empty responses, non-finite
+values, count mismatches, model mismatches, and dimension mismatches before an
+embedding record can be written or a job marked successful.
 
 The first implementation uses OpenAI `text-embedding-3-small` at its documented
 default of 1,536 dimensions. Its API key stays in environment configuration and
@@ -177,7 +179,7 @@ any user can receive semantic search results or citations.
 - [x] 9.1 Embedding and indexing contract
 - [x] 9.2 Qdrant configuration and runtime client
 - [x] 9.3 Embedding persistence and migration
-- [ ] 9.4 Embedding-provider abstraction
+- [x] 9.4 Embedding-provider abstraction
 - [ ] 9.5 Qdrant collection and vector operations
 - [ ] 9.6 Background indexing pipeline
 - [ ] 9.7 Reprocessing, idempotency, and cleanup
