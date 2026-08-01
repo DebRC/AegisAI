@@ -45,6 +45,10 @@ class DocumentStorage(ABC):
     def delete(self, storage_key: str) -> None:
         """Remove a stored original document. Missing objects are already removed."""
 
+    @abstractmethod
+    def iter_chunks(self, storage_key: str, chunk_size: int = 64 * 1024) -> Iterable[bytes]:
+        """Stream an existing original document through the trusted storage key."""
+
 
 class LocalDocumentStorage(DocumentStorage):
     """Persistent local-volume adapter for development and Docker deployments."""
@@ -107,6 +111,17 @@ class LocalDocumentStorage(DocumentStorage):
         path = self._path_for_key(storage_key)
         try:
             path.unlink(missing_ok=True)
+        except OSError as error:
+            raise DocumentStorageError("Document storage operation failed") from error
+
+    def iter_chunks(self, storage_key: str, chunk_size: int = 64 * 1024) -> Iterable[bytes]:
+        if not isinstance(chunk_size, int) or chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        path = self._path_for_key(storage_key)
+        try:
+            with path.open("rb") as source:
+                while chunk := source.read(chunk_size):
+                    yield chunk
         except OSError as error:
             raise DocumentStorageError("Document storage operation failed") from error
 

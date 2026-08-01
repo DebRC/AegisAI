@@ -8,7 +8,7 @@ from app.core.config import settings
 def create_celery_app() -> Celery:
     """Build the constrained Celery runtime used for document processing."""
 
-    application = Celery("aegis")
+    application = Celery("aegis", include=["app.workers.tasks"])
     application.conf.update(
         broker_url=settings.CELERY_BROKER_URL,
         result_backend=settings.CELERY_RESULT_BACKEND,
