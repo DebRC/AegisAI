@@ -72,3 +72,15 @@ class DocumentPersistenceError(Exception):
 
 class DocumentNotFoundError(Exception):
     """Raised when a requested document is absent or has been soft-deleted."""
+
+
+class ProcessingJobNotFoundError(Exception):
+    """Raised when a processing job is absent or belongs to another document."""
+
+
+class ProcessingJobStateError(Exception):
+    """Raised when an operation is incompatible with a job's current state."""
+
+
+class ProcessingJobPersistenceError(Exception):
+    """Raised when durable job or outbox state cannot be committed."""
