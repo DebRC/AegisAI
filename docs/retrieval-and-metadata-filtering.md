@@ -27,7 +27,7 @@ provider/model override, arbitrary Qdrant filter expression, or any other
 vendor-specific control. The active configured embedding identity is the only
 one used for search.
 
-Each future `RetrievalSearchResult` contains only the current document/chunk
+Each `RetrievalSearchResult` contains only the current document/chunk
 identity, document title and content type, chunk text and source locations, and
 a finite similarity score. A score is a ranking value, not a confidence claim.
 Results are ordered highest score first and use deterministic tie-breaking in
@@ -106,6 +106,46 @@ tie-breakers. The response contains only current document/chunk metadata,
 source text, source locations, and the score; Qdrant point IDs, vectors,
 collection names, provider responses, and embedding records remain internal.
 
+## 10.7 Retrieval API and current RBAC
+
+`POST /retrieval/search` is registered under the `/retrieval` router and
+requires the existing `documents:read` permission. Its dependency graph creates
+the configured query-embedding provider, Qdrant client, and PostgreSQL authority
+service per request; the Qdrant client is closed after the search. The route is
+thin and returns the validated `RetrievalSearchResponse` without exposing
+provider, broker, collection, point, or raw database details.
+
+Manual verification requires a local `OPENAI_API_KEY`, a processed document, and
+an access token from local login or SSO. Wait for
+`GET /documents/{document_id}/indexing-status` to report `succeeded`, then call:
+
+```bash
+curl -X POST http://localhost:8000/retrieval/search \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"refresh token rotation","limit":5}'
+```
+
+Without `documents:read`, the route returns HTTP 403. Invalid requests return
+validation errors; provider, Qdrant, and database failures return one safe HTTP
+503 response. Document-level and tenant-aware authorization are deferred to
+Phase 12.
+
+## 10.8 Tests, Docker verification, and documentation
+
+The test suite covers request validation, provider mismatches, Qdrant collection
+and filter safety, stale/deleted/checksum-invalid vector suppression,
+deterministic ranking, response redaction, RBAC, and safe infrastructure errors.
+The backend Dockerfile runs the full unit suite and offline Alembic SQL
+generation during image build. The canonical end-to-end local command remains:
+
+```bash
+docker compose up --build --force-recreate
+```
+
+This command applies migrations and starts the stack after the build gates pass;
+it does not itself provide an OpenAI key or bypass retrieval authorization.
+
 ## Delivery checkpoints
 
 - [x] 10.1 Retrieval contract and search policy
@@ -115,4 +155,4 @@ collection names, provider responses, and embedding records remain internal.
 - [x] 10.5 PostgreSQL authority checks
 - [x] 10.6 Retrieval service and ranking
 - [x] 10.7 Retrieval API and current RBAC
-- [ ] 10.8 Tests, Docker verification, and documentation
+- [x] 10.8 Tests, Docker verification, and documentation
