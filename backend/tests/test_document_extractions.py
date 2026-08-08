@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import Document
 from app.models import DocumentChunk
+from app.models import DocumentChunkEmbedding
 from app.models import DocumentExtraction
 from tests.helpers import DatabaseTestCase
 
@@ -84,12 +85,82 @@ class DocumentExtractionModelTests(DatabaseTestCase, unittest.TestCase):
         self.session.add(extraction)
         self.session.commit()
 
+        self.session.add(
+            DocumentChunkEmbedding(
+                document_chunk_id=extraction.chunks[0].id,
+                provider="openai",
+                model="text-embedding-3-small",
+                collection_name="aegis_document_chunks_v1",
+                point_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                vector_dimension=1536,
+                content_sha256=extraction.chunks[0].content_sha256,
+                indexed_at=datetime.now(timezone.utc),
+            )
+        )
+        self.session.commit()
+
         self.session.delete(extraction)
         self.session.commit()
 
         self.assertEqual(self.session.query(DocumentChunk).count(), 0)
+        self.assertEqual(self.session.query(DocumentChunkEmbedding).count(), 0)
         self.session.refresh(self.document)
         self.assertIsNone(self.document.extraction)
+
+    def test_persists_one_traceable_embedding_per_chunk_and_index_identity(self) -> None:
+        extraction = self._extraction(self.document)
+        self.session.add(extraction)
+        self.session.commit()
+        chunk = extraction.chunks[0]
+        embedding = DocumentChunkEmbedding(
+            document_chunk_id=chunk.id,
+            provider="openai",
+            model="text-embedding-3-small",
+            collection_name="aegis_document_chunks_v1",
+            point_id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            vector_dimension=1536,
+            content_sha256=chunk.content_sha256,
+            indexed_at=datetime.now(timezone.utc),
+        )
+        self.session.add(embedding)
+        self.session.commit()
+
+        self.session.refresh(chunk)
+
+        self.assertEqual(chunk.embeddings, [embedding])
+        self.assertEqual(embedding.chunk, chunk)
+        self.assertEqual(embedding.content_sha256, chunk.content_sha256)
+
+        self.session.add(
+            DocumentChunkEmbedding(
+                document_chunk_id=chunk.id,
+                provider="openai",
+                model="text-embedding-3-small",
+                collection_name="aegis_document_chunks_v1",
+                point_id="cccccccc-cccc-cccc-cccc-cccccccccccc",
+                vector_dimension=1536,
+                content_sha256=chunk.content_sha256,
+                indexed_at=datetime.now(timezone.utc),
+            )
+        )
+        with self.assertRaises(IntegrityError):
+            self.session.commit()
+        self.session.rollback()
+
+        invalid = DocumentChunkEmbedding(
+            document_chunk_id=chunk.id,
+            provider="openai",
+            model="text-embedding-3-small",
+            collection_name="aegis_document_chunks_v1",
+            point_id="too-short",
+            vector_dimension=0,
+            content_sha256=chunk.content_sha256,
+            indexed_at=datetime.now(timezone.utc),
+        )
+        self.session.add(invalid)
+        with self.assertRaises(IntegrityError):
+            self.session.commit()
+        self.session.rollback()
 
     def _document(self, suffix: str) -> Document:
         return Document(

@@ -143,6 +143,7 @@ class ApplicationTests(unittest.TestCase):
             ("/documents/{document_id}", "DELETE"): PermissionCode.DOCUMENTS_WRITE,
             ("/documents/{document_id}/extraction", "GET"): PermissionCode.DOCUMENTS_READ,
             ("/documents/{document_id}/extraction/chunks", "GET"): PermissionCode.DOCUMENTS_READ,
+            ("/documents/{document_id}/indexing-status", "GET"): PermissionCode.DOCUMENTS_READ,
             ("/documents/{document_id}/reprocess", "POST"): PermissionCode.DOCUMENTS_WRITE,
             ("/documents/{document_id}/processing-jobs", "GET"): PermissionCode.DOCUMENTS_READ,
             ("/documents/{document_id}/processing-jobs/{job_id}", "GET"): PermissionCode.DOCUMENTS_READ,

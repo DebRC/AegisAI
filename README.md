@@ -17,9 +17,10 @@ The backend foundation, document-ingestion boundary, background-processing runti
 | Document ingestion | Available | RBAC-protected upload, metadata management, local persistent original-file storage, SHA-256 integrity metadata, and soft deletion. |
 | Background processing | Available | Redis/Celery workers verify durable uploaded sources outside HTTP requests, with PostgreSQL-backed job state, retries, cancellation, and failure handling. |
 | Knowledge processing | Available | Workers safely extract supported files, normalize text, create deterministic chunks, and persist traceable output for later embedding. |
-| Retrieval and RAG | Planned | Embeddings, Qdrant indexing, retrieval, citations, and RAG chat. |
+| Vector indexing | Available | Workers queue and process OpenAI embeddings into validated Qdrant collections with traceable PostgreSQL records, cleanup, and safe progress visibility. |
+| Retrieval and RAG | Planned | Retrieval, citations, and RAG chat. |
 
-Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; it does not yet store vectors in Qdrant.
+Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; Phase 9.6 automatically indexes document vectors after extraction when `OPENAI_API_KEY` is configured.
 
 ### Technology
 
@@ -41,7 +42,8 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 6 — Document ingestion | Complete | Secure local storage, upload validation, metadata lifecycle, RBAC enforcement, and document-management APIs. |
 | Phase 7 — Background processing | Complete | Redis/Celery runtime, durable outbox delivery, worker integrity checks, job status, retry, and cancellation. |
 | Phase 8 — Text extraction and chunking | Complete | Safe TXT/Markdown/PDF/DOCX extraction, normalized traceable chunks, worker lifecycle, reprocessing, and RBAC-protected inspection APIs. |
-| Phases 9–12 — Retrieval and RAG | Planned | Embeddings, vector indexing, metadata filtering, streaming chat, citations, and permission-aware retrieval. |
+| Phase 9 — Embeddings and Qdrant indexing | Complete | OpenAI embedding boundary, Qdrant collection safety, durable indexing and cleanup jobs, traceable vector records, and safe status visibility. |
+| Phases 10–12 — Retrieval and RAG | Planned | Metadata-filtered retrieval, streaming chat with citations, and permission-aware retrieval. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
 
@@ -51,6 +53,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Document ingestion design](docs/document-ingestion.md) defines the implemented Phase 6 storage, lifecycle, authorization, and API contract.
 - [Background processing design](docs/background-processing.md) defines the implemented Phase 7 job, outbox, worker, and retry contract.
 - [Text extraction and chunking design](docs/text-extraction-and-chunking.md) defines the implemented Phase 8 format, lifecycle, traceability, safety, and manual-verification contract.
+- [Embeddings and Qdrant indexing design](docs/embeddings-and-qdrant-indexing.md) defines the Phase 9 vector, lifecycle, idempotency, and safety contract.
 
 ## Architecture
 
@@ -218,7 +221,9 @@ Copy [backend/.env.example](backend/.env.example) to `backend/.env`. Do not comm
 | `APP_NAME`, `APP_VERSION`, `APP_ENV` | Application identity and environment label. |
 | `HOST`, `PORT` | Backend listener configuration. Compose exposes port `8000`. |
 | `DATABASE_URL` | PostgreSQL connection URL. Inside Compose, the hostname must remain `postgres`. |
-| `QDRANT_URL` | Qdrant service URL. It is provisioned now for the later retrieval pipeline. |
+| `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION_NAME` | Qdrant connection and active derived-vector collection. A key is optional for local Docker. |
+| `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_VECTOR_DIMENSION` | Active embedding shape. Changing the dimension requires a new collection and deliberate reindex. |
+| `OPENAI_BASE_URL`, `OPENAI_API_KEY` | OpenAI embedding endpoint and secret. The key is needed only when Phase 9 worker indexing is enabled. |
 | `DOCUMENT_STORAGE_PATH` | Local original-document storage path. Compose mounts the persistent `document_data` volume at this path. |
 | `DOCUMENT_MAX_UPLOAD_BYTES` | Maximum streamed upload size. The default is 25 MiB and is enforced by the upload service. |
 | `DOCUMENT_MAX_EXTRACTED_TEXT_CHARACTERS` | Maximum parser output retained from one document; default 5,000,000 characters. |
@@ -274,6 +279,7 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | `GET`, `PATCH`, `DELETE` | `/documents/{document_id}` | Inspect with `documents:read`; rename or delete with `documents:write`. |
 | `GET` | `/documents/{document_id}/processing-jobs` | Inspect safe job history with `documents:read`. |
 | `POST` | `/documents/{document_id}/processing-jobs/{job_id}/retry` | Requeue one failed job with `documents:write`. |
+| `GET` | `/documents/{document_id}/indexing-status` | Inspect current vector progress and safe indexing state with `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction` | Inspect safe extraction metadata with `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction/chunks` | Inspect ordered, paginated chunks with `documents:read`. |
 | `POST` | `/documents/{document_id}/reprocess` | Queue replacement extraction with `documents:write`; returns `202 Accepted`. |
@@ -309,6 +315,26 @@ Readers can inspect only extraction metadata and bounded chunk pages; original
 storage keys, broker identifiers, and parser errors stay internal. See the
 [text extraction and chunking design](docs/text-extraction-and-chunking.md)
 for the lifecycle and a manual verification walkthrough.
+
+### Vector indexing
+
+Set `OPENAI_API_KEY` in the uncommitted `backend/.env` to enable real vector
+generation. After a document reaches `READY`, its worker queues an
+`embedding_indexing` job. Inspect its safe progress without exposing vector,
+Qdrant, or provider details:
+
+```bash
+curl http://localhost:8000/documents/DOCUMENT_ID/indexing-status \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
+```
+
+The caller needs `documents:read`. A `succeeded` response means every current
+chunk has a traceable vector in the configured collection. If `indexing_status`
+is `failed`, inspect the safe job history and retry that specific failed job
+with `documents:write`; do not retry while it is `queued` or `running`.
+Changing `EMBEDDING_MODEL` or `EMBEDDING_VECTOR_DIMENSION` requires a new
+`QDRANT_COLLECTION_NAME` and deliberate reprocessing. Never delete or alter an
+existing collection just to make a changed configuration fit.
 
 ### Browser SSO and Swagger
 
@@ -368,7 +394,7 @@ cd backend
 venv/bin/python -m unittest discover -s tests -v
 ```
 
-The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, document cleanup, background-job state, extraction, chunking, reprocessing, Swagger security schemes, migrations, and application startup.
+The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, document cleanup, background-job state, extraction, chunking, reprocessing, embedding validation and idempotency, Qdrant collection safety, Swagger security schemes, migrations, and application startup.
 
 The Dockerfile runs this suite during image build and produces the complete Alembic upgrade SQL. Compose runs the suite again before applying migrations and launching the API.
 
@@ -384,7 +410,7 @@ venv/bin/alembic upgrade head
 venv/bin/alembic current
 ```
 
-Review every generated migration before applying it, particularly constraint and index changes. The current migration chain creates users, refresh tokens, RBAC tables and seeded permissions, the `administrator` system role, external-identity bindings, documents, processing/outbox records, and extraction/chunk records.
+Review every generated migration before applying it, particularly constraint and index changes. The current migration chain creates users, refresh tokens, RBAC tables and seeded permissions, the `administrator` system role, external-identity bindings, documents, processing/outbox records, extraction/chunk records, embedding pointers, and durable vector-cleanup requests.
 
 When running Alembic from the host, use a database URL reachable from the host—normally `localhost`, not Compose's internal `postgres` hostname. `ALEMBIC_DATABASE_URL` can override the configured database URL for that command.
 
@@ -424,15 +450,14 @@ When running Alembic from the host, use a database URL reachable from the host�
 
 The next implementation milestones are:
 
-1. **Phase 9:** embeddings and Qdrant indexing.
-2. **Phase 10:** retrieval and metadata filtering.
-3. **Phase 11:** RAG chat, streaming, and citations.
-4. **Phase 12:** permission-aware retrieval.
-5. **Phase 13:** audit logging.
-6. **Phase 14:** administration dashboard.
-7. **Phase 15:** Next.js frontend.
-8. **Phase 16:** observability.
-9. **Phase 17:** CI/CD.
-10. **Phase 18:** Kubernetes.
-11. **Phase 19:** multi-tenancy.
-12. **Phase 20:** enterprise API keys, rate limits, and retention policies.
+1. **Phase 10:** retrieval and metadata filtering.
+2. **Phase 11:** RAG chat, streaming, and citations.
+3. **Phase 12:** permission-aware retrieval.
+4. **Phase 13:** audit logging.
+5. **Phase 14:** administration dashboard.
+6. **Phase 15:** Next.js frontend.
+7. **Phase 16:** observability.
+8. **Phase 17:** CI/CD.
+9. **Phase 18:** Kubernetes.
+10. **Phase 19:** multi-tenancy.
+11. **Phase 20:** enterprise API keys, rate limits, and retention policies.

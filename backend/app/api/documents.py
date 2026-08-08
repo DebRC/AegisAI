@@ -11,6 +11,7 @@ from fastapi import status
 
 from app.api.dependencies import get_document_service
 from app.api.dependencies import get_document_extraction_query_service
+from app.api.dependencies import get_document_embedding_status_service
 from app.api.dependencies import get_processing_job_service
 from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import DocumentExtractionNotFoundError
@@ -23,6 +24,7 @@ from app.models.user import User
 from app.schemas.document import DocumentListResponse
 from app.schemas.document import DocumentChunkListResponse
 from app.schemas.document import DocumentExtractionResponse
+from app.schemas.document import DocumentEmbeddingStatusResponse
 from app.schemas.document import DocumentRenameRequest
 from app.schemas.document import DocumentResponse
 from app.schemas.document import ProcessingJobListResponse
@@ -31,6 +33,7 @@ from app.security.dependencies import require_permission
 from app.security.permissions import PermissionCode
 from app.services.document_service import DocumentService
 from app.services.document_extraction_query_service import DocumentExtractionQueryService
+from app.services.document_embedding_status_service import DocumentEmbeddingStatusService
 from app.services.processing_job_service import ProcessingJobService
 from app.storage.documents import DocumentStorageError
 from app.storage.documents import EmptyDocumentError
@@ -161,6 +164,21 @@ def get_document_extraction(
     try:
         return service.get_extraction(document_id)
     except (DocumentNotFoundError, DocumentExtractionNotFoundError) as error:
+        raise _document_error_to_http_exception(error) from error
+
+
+@router.get(
+    "/{document_id}/indexing-status",
+    response_model=DocumentEmbeddingStatusResponse,
+    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
+)
+def get_document_indexing_status(
+    document_id: int,
+    service: DocumentEmbeddingStatusService = Depends(get_document_embedding_status_service),
+) -> DocumentEmbeddingStatusResponse:
+    try:
+        return service.get_status(document_id)
+    except DocumentNotFoundError as error:
         raise _document_error_to_http_exception(error) from error
 
 

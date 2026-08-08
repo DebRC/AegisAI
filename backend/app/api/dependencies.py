@@ -9,6 +9,7 @@ from app.security.sso_transactions import SsoTransactionManager
 from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
 from app.services.document_extraction_query_service import DocumentExtractionQueryService
+from app.services.document_embedding_status_service import DocumentEmbeddingStatusService
 from app.services.processing_job_service import ProcessingJobService
 from app.services.rbac_service import RbacService
 from app.services.sso_account_service import SsoAccountService
@@ -46,6 +47,12 @@ def get_document_extraction_query_service(
     db: Session = Depends(get_db),
 ) -> DocumentExtractionQueryService:
     return DocumentExtractionQueryService(db)
+
+
+def get_document_embedding_status_service(
+    db: Session = Depends(get_db),
+) -> DocumentEmbeddingStatusService:
+    return DocumentEmbeddingStatusService(db, settings)
 
 
 def get_processing_job_service(
