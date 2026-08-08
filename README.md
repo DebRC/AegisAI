@@ -54,6 +54,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Background processing design](docs/background-processing.md) defines the implemented Phase 7 job, outbox, worker, and retry contract.
 - [Text extraction and chunking design](docs/text-extraction-and-chunking.md) defines the implemented Phase 8 format, lifecycle, traceability, safety, and manual-verification contract.
 - [Embeddings and Qdrant indexing design](docs/embeddings-and-qdrant-indexing.md) defines the Phase 9 vector, lifecycle, idempotency, and safety contract.
+- [Retrieval and metadata filtering design](docs/retrieval-and-metadata-filtering.md) defines the in-progress Phase 10 search contract and boundaries.
 
 ## Architecture
 
