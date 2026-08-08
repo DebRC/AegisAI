@@ -94,6 +94,20 @@ payload mismatches are silently discarded as candidates. Qdrant therefore
 remains a derived candidate index and never becomes the source of document text
 or authorization state.
 
+## 10.6 Retrieval service and ranking
+
+`RetrievalService` composes the query-embedding and Qdrant boundaries, then
+passes candidates through `RetrievalAuthorityService` before producing the
+public response schema. It over-fetches at most 100 candidates to reduce the
+chance that stale vectors consume the requested result slots, closes the
+worker-scoped Qdrant client, and returns at most the request's `limit`.
+
+Verified results are sorted by descending similarity score. Equal scores use
+document ID, chunk ordinal, chunk ID, and point UUID as deterministic
+tie-breakers. The response contains only current document/chunk metadata,
+source text, source locations, and the score; Qdrant point IDs, vectors,
+collection names, provider responses, and embedding records remain internal.
+
 ## Delivery checkpoints
 
 - [x] 10.1 Retrieval contract and search policy
@@ -101,6 +115,6 @@ or authorization state.
 - [x] 10.3 Qdrant similarity-search boundary
 - [x] 10.4 Metadata filters
 - [x] 10.5 PostgreSQL authority checks
-- [ ] 10.6 Retrieval service and ranking
+- [x] 10.6 Retrieval service and ranking
 - [ ] 10.7 Retrieval API and current RBAC
 - [ ] 10.8 Tests, Docker verification, and documentation
