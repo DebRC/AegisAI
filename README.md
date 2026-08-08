@@ -2,7 +2,7 @@
 
 AegisAI is a secure, enterprise-oriented knowledge platform in development. It is being built to let organizations ingest internal content, retrieve it safely, and eventually chat with it through a permission-aware RAG experience.
 
-The backend foundation, document-ingestion boundary, background-processing runtime, and text-processing pipeline are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, secure document management, Redis/Celery workers, and traceable extracted text/chunks. Embeddings, retrieval, and chat follow.
+The backend foundation, document-ingestion boundary, background-processing runtime, text-processing pipeline, embeddings, and semantic retrieval are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, secure document management, Redis/Celery workers, traceable chunks, validated Qdrant indexing, and PostgreSQL-authoritative search. RAG chat follows.
 
 ## Overview
 
@@ -18,7 +18,8 @@ The backend foundation, document-ingestion boundary, background-processing runti
 | Background processing | Available | Redis/Celery workers verify durable uploaded sources outside HTTP requests, with PostgreSQL-backed job state, retries, cancellation, and failure handling. |
 | Knowledge processing | Available | Workers safely extract supported files, normalize text, create deterministic chunks, and persist traceable output for later embedding. |
 | Vector indexing | Available | Workers queue and process OpenAI embeddings into validated Qdrant collections with traceable PostgreSQL records, cleanup, and safe progress visibility. |
-| Retrieval and RAG | Planned | Retrieval, citations, and RAG chat. |
+| Semantic retrieval | Available | Bounded metadata-filtered search validates Qdrant candidates against current PostgreSQL documents, chunks, and embedding records. |
+| RAG chat | Planned | Streaming answers, citations, and permission-aware conversational retrieval. |
 
 Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; Phase 9.6 automatically indexes document vectors after extraction when `OPENAI_API_KEY` is configured.
 
@@ -43,7 +44,8 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 7 — Background processing | Complete | Redis/Celery runtime, durable outbox delivery, worker integrity checks, job status, retry, and cancellation. |
 | Phase 8 — Text extraction and chunking | Complete | Safe TXT/Markdown/PDF/DOCX extraction, normalized traceable chunks, worker lifecycle, reprocessing, and RBAC-protected inspection APIs. |
 | Phase 9 — Embeddings and Qdrant indexing | Complete | OpenAI embedding boundary, Qdrant collection safety, durable indexing and cleanup jobs, traceable vector records, and safe status visibility. |
-| Phases 10–12 — Retrieval and RAG | Planned | Metadata-filtered retrieval, streaming chat with citations, and permission-aware retrieval. |
+| Phase 10 — Retrieval and metadata filtering | Complete | Query embedding, safe Qdrant search, controlled filters, PostgreSQL authority checks, deterministic ranking, and RBAC-protected search API. |
+| Phases 11–12 — RAG and permission-aware retrieval | Planned | Streaming answers with citations and resource/tenant-aware result authorization. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
 
@@ -54,6 +56,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Background processing design](docs/background-processing.md) defines the implemented Phase 7 job, outbox, worker, and retry contract.
 - [Text extraction and chunking design](docs/text-extraction-and-chunking.md) defines the implemented Phase 8 format, lifecycle, traceability, safety, and manual-verification contract.
 - [Embeddings and Qdrant indexing design](docs/embeddings-and-qdrant-indexing.md) defines the Phase 9 vector, lifecycle, idempotency, and safety contract.
+- [Retrieval and metadata filtering design](docs/retrieval-and-metadata-filtering.md) defines the implemented Phase 10 search contract, authority checks, API, and verification workflow.
 
 ## Architecture
 
@@ -94,9 +97,11 @@ Documents ──► PostgreSQL outbox ──► Redis ──► Celery workers
                                            ▼
                               PostgreSQL extraction/chunk records
 
-                                  Planned next
+                                  Available now
 
-                     embeddings ──► Qdrant ──► permission-aware retrieval + RAG chat
+                     embeddings ──► Qdrant ──► semantic retrieval
+                                                       │
+                                  Planned next ◄────────┴──── RAG chat + citations
 ```
 
 The backend follows a layered design so that HTTP, business rules, and persistence remain independently testable:
@@ -280,6 +285,7 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | `GET` | `/documents/{document_id}/processing-jobs` | Inspect safe job history with `documents:read`. |
 | `POST` | `/documents/{document_id}/processing-jobs/{job_id}/retry` | Requeue one failed job with `documents:write`. |
 | `GET` | `/documents/{document_id}/indexing-status` | Inspect current vector progress and safe indexing state with `documents:read`. |
+| `POST` | `/retrieval/search` | Perform bounded semantic search with metadata filters and `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction` | Inspect safe extraction metadata with `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction/chunks` | Inspect ordered, paginated chunks with `documents:read`. |
 | `POST` | `/documents/{document_id}/reprocess` | Queue replacement extraction with `documents:write`; returns `202 Accepted`. |
@@ -335,6 +341,35 @@ with `documents:write`; do not retry while it is `queued` or `running`.
 Changing `EMBEDDING_MODEL` or `EMBEDDING_VECTOR_DIMENSION` requires a new
 `QDRANT_COLLECTION_NAME` and deliberate reprocessing. Never delete or alter an
 existing collection just to make a changed configuration fit.
+
+### Semantic retrieval
+
+Set `OPENAI_API_KEY` in the uncommitted `backend/.env`, upload and process a
+supported document, and wait until its indexing status is `succeeded`. Then
+search with the same access token:
+
+```bash
+curl -X POST http://localhost:8000/retrieval/search \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"refresh token rotation","limit":5}'
+```
+
+Optional filters are controlled document IDs and supported MIME types:
+
+```json
+{
+  "query": "retention policy",
+  "limit": 5,
+  "document_ids": [12, 18],
+  "content_types": ["text/markdown", "application/pdf"]
+}
+```
+
+The caller needs `documents:read`. Results contain current chunk text, source
+locations, document metadata, and similarity scores. Phase 12 will add
+document-level and tenant-aware authorization; the current endpoint applies
+global RBAC only.
 
 ### Browser SSO and Swagger
 

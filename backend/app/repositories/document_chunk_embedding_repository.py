@@ -3,6 +3,10 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.document import Document
+from app.models.document import DocumentStatus
+from app.models.document_extraction import DocumentChunk
+from app.models.document_extraction import DocumentExtraction
 from app.models.document_extraction import DocumentChunkEmbedding
 
 
@@ -69,3 +73,42 @@ class DocumentChunkEmbeddingRepository:
                 DocumentChunkEmbedding.collection_name == collection_name,
             )
         ) or 0
+
+    def resolve_current_by_point_ids(
+        self,
+        *,
+        point_ids: list[str],
+        provider: str,
+        model: str,
+        collection_name: str,
+        vector_dimension: int,
+        document_ids: list[int] | None = None,
+        content_types: list[str] | None = None,
+    ) -> dict[str, tuple[Document, DocumentExtraction, DocumentChunk, DocumentChunkEmbedding]]:
+        """Resolve only current, active PostgreSQL rows for Qdrant point IDs."""
+        if not point_ids:
+            return {}
+
+        conditions = [
+            DocumentChunkEmbedding.point_id.in_(point_ids),
+            DocumentChunkEmbedding.provider == provider,
+            DocumentChunkEmbedding.model == model,
+            DocumentChunkEmbedding.collection_name == collection_name,
+            DocumentChunkEmbedding.vector_dimension == vector_dimension,
+            DocumentChunkEmbedding.content_sha256 == DocumentChunk.content_sha256,
+            Document.deleted_at.is_(None),
+            Document.status == DocumentStatus.READY,
+        ]
+        if document_ids is not None:
+            conditions.append(Document.id.in_(document_ids))
+        if content_types is not None:
+            conditions.append(Document.content_type.in_(content_types))
+
+        rows = self.db.execute(
+            select(Document, DocumentExtraction, DocumentChunk, DocumentChunkEmbedding)
+            .join(DocumentExtraction, DocumentExtraction.document_id == Document.id)
+            .join(DocumentChunk, DocumentChunk.document_extraction_id == DocumentExtraction.id)
+            .join(DocumentChunkEmbedding, DocumentChunkEmbedding.document_chunk_id == DocumentChunk.id)
+            .where(*conditions)
+        ).all()
+        return {embedding.point_id: (document, extraction, chunk, embedding) for document, extraction, chunk, embedding in rows}

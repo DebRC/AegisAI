@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 import math
-from typing import Sequence
+from typing import Mapping, Sequence
 from uuid import UUID
 
 from qdrant_client import QdrantClient, models
@@ -10,6 +10,7 @@ from qdrant_client import QdrantClient, models
 from app.core.config import Settings
 from app.integrations.vector_store.exceptions import VectorStoreConfigurationError
 from app.integrations.vector_store.exceptions import VectorStoreOperationError
+from app.schemas.retrieval import SUPPORTED_RETRIEVAL_CONTENT_TYPES
 
 
 _PAYLOAD_INDEXES: tuple[tuple[str, models.PayloadSchemaType], ...] = (
@@ -21,6 +22,8 @@ _PAYLOAD_INDEXES: tuple[tuple[str, models.PayloadSchemaType], ...] = (
     ("embedding_provider", models.PayloadSchemaType.KEYWORD),
     ("embedding_model", models.PayloadSchemaType.KEYWORD),
 )
+_PAYLOAD_FIELDS: tuple[str, ...] = tuple(field_name for field_name, _ in _PAYLOAD_INDEXES)
+_MAX_SEARCH_LIMIT = 100
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,31 @@ class QdrantVectorPoint:
         }
 
 
+@dataclass(frozen=True)
+class QdrantSearchCandidate:
+    """A scored point with only the allow-listed retrieval payload."""
+
+    point_id: str
+    score: float
+    payload: Mapping[str, int | str]
+
+    def __post_init__(self) -> None:
+        try:
+            normalized_point_id = str(UUID(self.point_id))
+        except (AttributeError, TypeError, ValueError) as error:
+            raise ValueError("Qdrant search point_id must be a UUID") from error
+        if isinstance(self.score, bool) or not isinstance(self.score, (int, float)) or not math.isfinite(self.score):
+            raise ValueError("Qdrant search scores must be finite numbers")
+        normalized_payload = {
+            field_name: self.payload[field_name]
+            for field_name in _PAYLOAD_FIELDS
+            if field_name in self.payload
+        }
+        object.__setattr__(self, "point_id", normalized_point_id)
+        object.__setattr__(self, "score", float(self.score))
+        object.__setattr__(self, "payload", normalized_payload)
+
+
 class QdrantVectorStore:
     """Own the compatible collection contract and idempotent point operations."""
 
@@ -94,6 +122,7 @@ class QdrantVectorStore:
         collection_name: str | None = None,
     ) -> None:
         self._client = client
+        self._configuration = configuration
         self._collection_name = collection_name or configuration.QDRANT_COLLECTION_NAME
         self._vector_dimension = configuration.EMBEDDING_VECTOR_DIMENSION
 
@@ -158,6 +187,80 @@ class QdrantVectorStore:
             raise VectorStoreOperationError("Document vectors could not be removed.") from error
         return len(normalized_point_ids)
 
+    def search(
+        self,
+        *,
+        vector: Sequence[float],
+        provider: str,
+        model: str,
+        limit: int,
+        document_ids: Sequence[int] | None = None,
+        content_types: Sequence[str] | None = None,
+    ) -> list[QdrantSearchCandidate]:
+        """Return filtered active-identity candidates without creating a collection."""
+        if provider != self._configuration_provider or model != self._configuration_model:
+            raise VectorStoreConfigurationError(
+                "The search embedding identity does not match the active configuration."
+            )
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_SEARCH_LIMIT:
+            raise ValueError(f"Qdrant search limit must be between 1 and {_MAX_SEARCH_LIMIT}")
+        normalized_document_ids = self._normalize_document_filter(document_ids)
+        normalized_content_types = self._normalize_content_type_filter(content_types)
+
+        normalized_vector = self._normalize_search_vector(vector)
+        must_conditions = [
+            models.FieldCondition(
+                key="embedding_provider",
+                match=models.MatchValue(value=provider),
+            ),
+            models.FieldCondition(
+                key="embedding_model",
+                match=models.MatchValue(value=model),
+            ),
+        ]
+        if normalized_document_ids is not None:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="document_id",
+                    match=models.MatchAny(any=normalized_document_ids),
+                )
+            )
+        if normalized_content_types is not None:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="content_type",
+                    match=models.MatchAny(any=normalized_content_types),
+                )
+            )
+        query_filter = models.Filter(must=must_conditions)
+        try:
+            if not self._client.collection_exists(self._collection_name):
+                return []
+            collection = self._client.get_collection(self._collection_name)
+            self._validate_collection(collection.config.params.vectors)
+            response = self._client.query_points(
+                collection_name=self._collection_name,
+                query=normalized_vector,
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=list(_PAYLOAD_FIELDS),
+                with_vectors=False,
+            )
+            return [
+                QdrantSearchCandidate(
+                    point_id=str(point.id),
+                    score=point.score,
+                    payload=point.payload or {},
+                )
+                for point in response.points
+            ]
+        except VectorStoreConfigurationError:
+            raise
+        except ValueError as error:
+            raise VectorStoreOperationError("Document-vector search returned invalid data.") from error
+        except Exception as error:
+            raise VectorStoreOperationError("Document-vector storage is unavailable.") from error
+
     def close(self) -> None:
         """Release the worker-scoped client created for this store."""
         self._client.close()
@@ -191,6 +294,50 @@ class QdrantVectorStore:
             raise VectorStoreConfigurationError(
                 "The configured Qdrant collection does not match the active embedding configuration."
             )
+
+    @property
+    def _configuration_provider(self) -> str:
+        return self._configuration.EMBEDDING_PROVIDER
+
+    @property
+    def _configuration_model(self) -> str:
+        return self._configuration.EMBEDDING_MODEL
+
+    def _normalize_search_vector(self, vector: Sequence[float]) -> list[float]:
+        if len(vector) != self._vector_dimension:
+            raise VectorStoreConfigurationError(
+                "The search vector does not match the active embedding dimension."
+            )
+        normalized: list[float] = []
+        for value in vector:
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError("Qdrant search vectors must contain finite numbers")
+            normalized.append(float(value))
+        return normalized
+
+    @staticmethod
+    def _normalize_document_filter(document_ids: Sequence[int] | None) -> list[int] | None:
+        if document_ids is None:
+            return None
+        normalized = list(document_ids)
+        if not normalized or any(
+            isinstance(document_id, bool) or not isinstance(document_id, int) or document_id < 1
+            for document_id in normalized
+        ) or len(set(normalized)) != len(normalized):
+            raise ValueError("Qdrant document filters must contain unique positive integers")
+        return normalized
+
+    @staticmethod
+    def _normalize_content_type_filter(content_types: Sequence[str] | None) -> list[str] | None:
+        if content_types is None:
+            return None
+        normalized = list(content_types)
+        if not normalized or any(
+            not isinstance(content_type, str) or content_type not in SUPPORTED_RETRIEVAL_CONTENT_TYPES
+            for content_type in normalized
+        ) or len(set(normalized)) != len(normalized):
+            raise ValueError("Qdrant content-type filters contain an unsupported or duplicate value")
+        return normalized
 
     def _ensure_payload_indexes(self) -> None:
         for field_name, field_schema in _PAYLOAD_INDEXES:

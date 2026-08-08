@@ -1,0 +1,158 @@
+# Retrieval and metadata filtering design
+
+## Purpose
+
+Phase 10 turns Phase 9's derived vectors into grounded semantic-search
+results. Qdrant finds candidate vector IDs and similarity scores; PostgreSQL
+will remain authoritative for document state, chunk text, extraction identity,
+and vector validity. Phase 10 does not generate an LLM answer or provide chat.
+
+## 10.1 Retrieval contract and search policy
+
+The read-only search endpoint is `POST /retrieval/search`. It accepts the
+contract below and is protected by the existing global `documents:read`
+permission. Per-document and tenant-aware authorization remain Phase 12 work.
+
+`RetrievalSearchRequest` accepts only:
+
+| Field | Rule |
+| --- | --- |
+| `query` | Required, whitespace-normalized text of at most 10,000 characters. |
+| `limit` | Optional, defaults to 10, and is bounded from 1 through 20. |
+| `document_ids` | Optional allow-list of at most 100 unique positive document IDs. |
+| `content_types` | Optional allow-list from the four supported ingestion MIME types; duplicates are rejected. |
+
+Clients cannot send a Qdrant collection name, point ID, score threshold,
+provider/model override, arbitrary Qdrant filter expression, or any other
+vendor-specific control. The active configured embedding identity is the only
+one used for search.
+
+Each `RetrievalSearchResult` contains only the current document/chunk
+identity, document title and content type, chunk text and source locations, and
+a finite similarity score. A score is a ranking value, not a confidence claim.
+Results are ordered highest score first and use deterministic tie-breaking in
+the retrieval service. Empty matches return an empty `items` list, while invalid
+input is rejected by request validation.
+
+This is not document-level authorization: Phase 12 will add permission-aware
+and tenant-aware retrieval before semantic results can be exposed under a
+resource-specific policy.
+
+## 10.2 Query-embedding boundary
+
+`QueryEmbeddingService` adapts one validated `RetrievalSearchRequest` to the
+existing `EmbeddingProvider` protocol. It calls `embed` with exactly one
+normalized query string, verifies that exactly one vector was returned, and
+requires the provider, model, and vector dimension to match the active settings.
+The returned `QueryEmbedding` carries only the finite vector and that validated
+identity; query vectors are not persisted.
+
+Provider configuration, transport, response, and validation failures become a
+single safe `QueryEmbeddingError` boundary. Provider details and credentials do
+not cross into an API response, and the provider client is closed after every
+attempt, including failures. The service is injected with a provider factory so
+unit tests and future provider implementations do not require a network call.
+
+## 10.3 Qdrant similarity-search boundary
+
+`QdrantVectorStore.search` accepts only a finite vector, the active provider and
+model identity, and a bounded result limit. It rejects mismatched identity or
+dimension before contacting Qdrant. The query uses the configured collection,
+cosine-compatible vector schema, and an explicit provider/model payload filter;
+clients cannot select a collection or submit an arbitrary Qdrant expression.
+
+An absent collection returns no candidates and does not create one. Each result
+is normalized to a typed `QdrantSearchCandidate` containing a UUID point ID, a
+finite similarity score, and only the existing allow-listed metadata payload.
+Vectors are never returned from the search boundary. Qdrant failures and
+malformed results become safe vector-store errors for the retrieval service.
+
+## 10.4 Metadata filters
+
+The vector-store boundary now translates the contract's two allow-listed
+filters into an `AND`-combined Qdrant filter: document IDs match any selected
+ID, and content types match any selected MIME type. Provider and model identity
+conditions remain mandatory. Empty lists, duplicate values, non-positive IDs,
+unsupported MIME types, and arbitrary filter objects are rejected before any
+Qdrant request. The caller still cannot select fields, operators, collections,
+or score expressions.
+
+## 10.5 PostgreSQL authority checks
+
+`RetrievalAuthorityService` resolves Qdrant point IDs through one joined
+PostgreSQL query covering the active document, its current extraction, current
+chunk, and matching embedding pointer. A row is accepted only when the document
+is `READY` and not soft-deleted, the embedding uses the active provider, model,
+collection, and dimension, and its checksum matches the current chunk checksum.
+
+The service also compares all seven safe Qdrant payload fields with the
+authoritative relational values. Missing rows, deleted documents, superseded
+extractions, stale checksums, wrong index identity, metadata-filter misses, and
+payload mismatches are silently discarded as candidates. Qdrant therefore
+remains a derived candidate index and never becomes the source of document text
+or authorization state.
+
+## 10.6 Retrieval service and ranking
+
+`RetrievalService` composes the query-embedding and Qdrant boundaries, then
+passes candidates through `RetrievalAuthorityService` before producing the
+public response schema. It over-fetches at most 100 candidates to reduce the
+chance that stale vectors consume the requested result slots, closes the
+worker-scoped Qdrant client, and returns at most the request's `limit`.
+
+Verified results are sorted by descending similarity score. Equal scores use
+document ID, chunk ordinal, chunk ID, and point UUID as deterministic
+tie-breakers. The response contains only current document/chunk metadata,
+source text, source locations, and the score; Qdrant point IDs, vectors,
+collection names, provider responses, and embedding records remain internal.
+
+## 10.7 Retrieval API and current RBAC
+
+`POST /retrieval/search` is registered under the `/retrieval` router and
+requires the existing `documents:read` permission. Its dependency graph creates
+the configured query-embedding provider, Qdrant client, and PostgreSQL authority
+service per request; the Qdrant client is closed after the search. The route is
+thin and returns the validated `RetrievalSearchResponse` without exposing
+provider, broker, collection, point, or raw database details.
+
+Manual verification requires a local `OPENAI_API_KEY`, a processed document, and
+an access token from local login or SSO. Wait for
+`GET /documents/{document_id}/indexing-status` to report `succeeded`, then call:
+
+```bash
+curl -X POST http://localhost:8000/retrieval/search \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"refresh token rotation","limit":5}'
+```
+
+Without `documents:read`, the route returns HTTP 403. Invalid requests return
+validation errors; provider, Qdrant, and database failures return one safe HTTP
+503 response. Document-level and tenant-aware authorization are deferred to
+Phase 12.
+
+## 10.8 Tests, Docker verification, and documentation
+
+The test suite covers request validation, provider mismatches, Qdrant collection
+and filter safety, stale/deleted/checksum-invalid vector suppression,
+deterministic ranking, response redaction, RBAC, and safe infrastructure errors.
+The backend Dockerfile runs the full unit suite and offline Alembic SQL
+generation during image build. The canonical end-to-end local command remains:
+
+```bash
+docker compose up --build --force-recreate
+```
+
+This command applies migrations and starts the stack after the build gates pass;
+it does not itself provide an OpenAI key or bypass retrieval authorization.
+
+## Delivery checkpoints
+
+- [x] 10.1 Retrieval contract and search policy
+- [x] 10.2 Query-embedding boundary
+- [x] 10.3 Qdrant similarity-search boundary
+- [x] 10.4 Metadata filters
+- [x] 10.5 PostgreSQL authority checks
+- [x] 10.6 Retrieval service and ranking
+- [x] 10.7 Retrieval API and current RBAC
+- [x] 10.8 Tests, Docker verification, and documentation
