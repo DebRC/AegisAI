@@ -10,6 +10,7 @@ from qdrant_client import QdrantClient, models
 from app.core.config import Settings
 from app.integrations.vector_store.exceptions import VectorStoreConfigurationError
 from app.integrations.vector_store.exceptions import VectorStoreOperationError
+from app.schemas.retrieval import SUPPORTED_RETRIEVAL_CONTENT_TYPES
 
 
 _PAYLOAD_INDEXES: tuple[tuple[str, models.PayloadSchemaType], ...] = (
@@ -193,28 +194,45 @@ class QdrantVectorStore:
         provider: str,
         model: str,
         limit: int,
+        document_ids: Sequence[int] | None = None,
+        content_types: Sequence[str] | None = None,
     ) -> list[QdrantSearchCandidate]:
-        """Return active-identity similarity candidates without creating a collection."""
+        """Return filtered active-identity candidates without creating a collection."""
         if provider != self._configuration_provider or model != self._configuration_model:
             raise VectorStoreConfigurationError(
                 "The search embedding identity does not match the active configuration."
             )
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_SEARCH_LIMIT:
             raise ValueError(f"Qdrant search limit must be between 1 and {_MAX_SEARCH_LIMIT}")
+        normalized_document_ids = self._normalize_document_filter(document_ids)
+        normalized_content_types = self._normalize_content_type_filter(content_types)
 
         normalized_vector = self._normalize_search_vector(vector)
-        query_filter = models.Filter(
-            must=[
+        must_conditions = [
+            models.FieldCondition(
+                key="embedding_provider",
+                match=models.MatchValue(value=provider),
+            ),
+            models.FieldCondition(
+                key="embedding_model",
+                match=models.MatchValue(value=model),
+            ),
+        ]
+        if normalized_document_ids is not None:
+            must_conditions.append(
                 models.FieldCondition(
-                    key="embedding_provider",
-                    match=models.MatchValue(value=provider),
-                ),
+                    key="document_id",
+                    match=models.MatchAny(any=normalized_document_ids),
+                )
+            )
+        if normalized_content_types is not None:
+            must_conditions.append(
                 models.FieldCondition(
-                    key="embedding_model",
-                    match=models.MatchValue(value=model),
-                ),
-            ]
-        )
+                    key="content_type",
+                    match=models.MatchAny(any=normalized_content_types),
+                )
+            )
+        query_filter = models.Filter(must=must_conditions)
         try:
             if not self._client.collection_exists(self._collection_name):
                 return []
@@ -295,6 +313,30 @@ class QdrantVectorStore:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ValueError("Qdrant search vectors must contain finite numbers")
             normalized.append(float(value))
+        return normalized
+
+    @staticmethod
+    def _normalize_document_filter(document_ids: Sequence[int] | None) -> list[int] | None:
+        if document_ids is None:
+            return None
+        normalized = list(document_ids)
+        if not normalized or any(
+            isinstance(document_id, bool) or not isinstance(document_id, int) or document_id < 1
+            for document_id in normalized
+        ) or len(set(normalized)) != len(normalized):
+            raise ValueError("Qdrant document filters must contain unique positive integers")
+        return normalized
+
+    @staticmethod
+    def _normalize_content_type_filter(content_types: Sequence[str] | None) -> list[str] | None:
+        if content_types is None:
+            return None
+        normalized = list(content_types)
+        if not normalized or any(
+            not isinstance(content_type, str) or content_type not in SUPPORTED_RETRIEVAL_CONTENT_TYPES
+            for content_type in normalized
+        ) or len(set(normalized)) != len(normalized):
+            raise ValueError("Qdrant content-type filters contain an unsupported or duplicate value")
         return normalized
 
     def _ensure_payload_indexes(self) -> None:

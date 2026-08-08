@@ -27,8 +27,10 @@ class RetrievalSchemaTests(unittest.TestCase):
             {"query": "policy", "limit": 21},
             {"query": "policy", "document_ids": [1, 1]},
             {"query": "policy", "document_ids": [0]},
+            {"query": "policy", "document_ids": []},
             {"query": "policy", "content_types": ["text/plain", "text/plain"]},
             {"query": "policy", "content_types": ["application/octet-stream"]},
+            {"query": "policy", "content_types": []},
         )
 
         for values in invalid_requests:

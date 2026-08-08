@@ -14,6 +14,14 @@ RetrievalContentType = Literal[
     "text/markdown",
     "text/plain",
 ]
+SUPPORTED_RETRIEVAL_CONTENT_TYPES = frozenset(
+    {
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/markdown",
+        "text/plain",
+    }
+)
 
 MAX_RETRIEVAL_QUERY_CHARACTERS = 10_000
 MAX_RETRIEVAL_LIMIT = 20
@@ -25,8 +33,12 @@ class RetrievalSearchRequest(BaseModel):
 
     query: str = Field(min_length=1, max_length=MAX_RETRIEVAL_QUERY_CHARACTERS)
     limit: int = Field(default=10, ge=1, le=MAX_RETRIEVAL_LIMIT)
-    document_ids: list[int] | None = Field(default=None, max_length=MAX_RETRIEVAL_DOCUMENT_FILTERS)
-    content_types: list[RetrievalContentType] | None = Field(default=None, max_length=4)
+    document_ids: list[int] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_RETRIEVAL_DOCUMENT_FILTERS,
+    )
+    content_types: list[RetrievalContentType] | None = Field(default=None, min_length=1, max_length=4)
 
     model_config = ConfigDict(str_strip_whitespace=True)
 

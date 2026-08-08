@@ -69,12 +69,22 @@ finite similarity score, and only the existing allow-listed metadata payload.
 Vectors are never returned from the search boundary. Qdrant failures and
 malformed results become safe vector-store errors for the retrieval service.
 
+## 10.4 Metadata filters
+
+The vector-store boundary now translates the contract's two allow-listed
+filters into an `AND`-combined Qdrant filter: document IDs match any selected
+ID, and content types match any selected MIME type. Provider and model identity
+conditions remain mandatory. Empty lists, duplicate values, non-positive IDs,
+unsupported MIME types, and arbitrary filter objects are rejected before any
+Qdrant request. The caller still cannot select fields, operators, collections,
+or score expressions.
+
 ## Delivery checkpoints
 
 - [x] 10.1 Retrieval contract and search policy
 - [x] 10.2 Query-embedding boundary
 - [x] 10.3 Qdrant similarity-search boundary
-- [ ] 10.4 Metadata filters
+- [x] 10.4 Metadata filters
 - [ ] 10.5 PostgreSQL authority checks
 - [ ] 10.6 Retrieval service and ranking
 - [ ] 10.7 Retrieval API and current RBAC
