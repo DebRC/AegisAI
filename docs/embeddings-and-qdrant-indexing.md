@@ -196,10 +196,15 @@ bodies, credentials, stack traces, and Qdrant internals remain in worker logs.
 ## Authorization and future retrieval
 
 Phase 9 retains the established global `documents:read` and `documents:write`
-policies for safe document and job-status APIs. The index payload carries
-provenance fields needed for later filtering, but payload fields are not an
-authorization boundary. Phase 12 will enforce permission-aware retrieval before
-any user can receive semantic search results or citations.
+policies. `GET /documents/{document_id}/indexing-status` requires
+`documents:read` and returns the number of current chunks, the number indexed
+by the active provider/model/collection, safe indexing state/error, attempt
+count, and pending cleanup count. It never returns point IDs, collection names,
+broker IDs, provider responses, or raw error details. Retrying a failed job
+continues to require `documents:write`. The index payload carries provenance
+fields needed for later filtering, but payload fields are not an authorization
+boundary. Phase 12 will enforce permission-aware retrieval before any user can
+receive semantic search results or citations.
 
 ## Delivery checkpoints
 
@@ -210,5 +215,5 @@ any user can receive semantic search results or citations.
 - [x] 9.5 Qdrant collection and vector operations
 - [x] 9.6 Background indexing pipeline
 - [x] 9.7 Reprocessing, idempotency, and cleanup
-- [ ] 9.8 Status visibility and authorization
+- [x] 9.8 Status visibility and authorization
 - [ ] 9.9 Tests, Docker verification, and documentation

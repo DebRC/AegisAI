@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
@@ -46,6 +46,38 @@ class ProcessingJobRepository:
                 .order_by(ProcessingJob.created_at.desc(), ProcessingJob.id.desc())
             )
         )
+
+    def get_latest_by_document_and_type(
+        self,
+        *,
+        document_id: int,
+        job_type: str,
+    ) -> ProcessingJob | None:
+        return self.db.scalar(
+            select(ProcessingJob)
+            .where(
+                ProcessingJob.document_id == document_id,
+                ProcessingJob.job_type == job_type,
+            )
+            .order_by(ProcessingJob.created_at.desc(), ProcessingJob.id.desc())
+            .limit(1)
+        )
+
+    def count_nonterminal_for_document_and_type(
+        self,
+        *,
+        document_id: int,
+        job_type: str,
+    ) -> int:
+        return self.db.scalar(
+            select(func.count())
+            .select_from(ProcessingJob)
+            .where(
+                ProcessingJob.document_id == document_id,
+                ProcessingJob.job_type == job_type,
+                ProcessingJob.status.in_([ProcessingJobStatus.QUEUED, ProcessingJobStatus.RUNNING]),
+            )
+        ) or 0
 
     def has_nonterminal_for_document_and_type(
         self,

@@ -1,6 +1,6 @@
 """Persistence operations for derived document-chunk embedding pointers."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.document_extraction import DocumentChunkEmbedding
@@ -45,3 +45,27 @@ class DocumentChunkEmbeddingRepository:
                 .where(DocumentExtraction.document_id == document_id)
             )
         )
+
+    def count_current_chunks_by_document_id(
+        self,
+        *,
+        document_id: int,
+        provider: str,
+        model: str,
+        collection_name: str,
+    ) -> int:
+        """Count current chunks indexed by the active provider/model/collection."""
+        from app.models.document_extraction import DocumentChunk
+        from app.models.document_extraction import DocumentExtraction
+
+        return self.db.scalar(
+            select(func.count(func.distinct(DocumentChunkEmbedding.document_chunk_id)))
+            .join(DocumentChunk)
+            .join(DocumentExtraction)
+            .where(
+                DocumentExtraction.document_id == document_id,
+                DocumentChunkEmbedding.provider == provider,
+                DocumentChunkEmbedding.model == model,
+                DocumentChunkEmbedding.collection_name == collection_name,
+            )
+        ) or 0

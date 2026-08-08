@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 from pydantic import ConfigDict
@@ -89,3 +90,17 @@ class ProcessingJobResponse(BaseModel):
 
 class ProcessingJobListResponse(BaseModel):
     items: list[ProcessingJobResponse]
+
+
+class DocumentEmbeddingStatusResponse(BaseModel):
+    """Public progress for current derived vectors; internal index details stay private."""
+
+    document_id: int
+    total_chunks: int
+    indexed_chunks: int
+    indexing_status: Literal["not_started", "queued", "running", "succeeded", "failed", "cancelled"]
+    indexing_attempt_count: int
+    indexing_error: str | None
+    cleanup_pending_count: int
+
+    model_config = ConfigDict(from_attributes=True)

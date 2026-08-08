@@ -42,7 +42,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 6 — Document ingestion | Complete | Secure local storage, upload validation, metadata lifecycle, RBAC enforcement, and document-management APIs. |
 | Phase 7 — Background processing | Complete | Redis/Celery runtime, durable outbox delivery, worker integrity checks, job status, retry, and cancellation. |
 | Phase 8 — Text extraction and chunking | Complete | Safe TXT/Markdown/PDF/DOCX extraction, normalized traceable chunks, worker lifecycle, reprocessing, and RBAC-protected inspection APIs. |
-| Phase 9 — Embeddings and Qdrant indexing | In progress | Contract, provider boundary, collection safety, durable indexing, reprocessing safety, and traceable cleanup are ready; status refinements follow. |
+| Phase 9 — Embeddings and Qdrant indexing | In progress | Contract, provider boundary, collection safety, durable indexing, reprocessing safety, cleanup, and safe status visibility are ready. |
 | Phases 10–12 — Retrieval and RAG | Planned | Metadata-filtered retrieval, streaming chat with citations, and permission-aware retrieval. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
@@ -279,6 +279,7 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | `GET`, `PATCH`, `DELETE` | `/documents/{document_id}` | Inspect with `documents:read`; rename or delete with `documents:write`. |
 | `GET` | `/documents/{document_id}/processing-jobs` | Inspect safe job history with `documents:read`. |
 | `POST` | `/documents/{document_id}/processing-jobs/{job_id}/retry` | Requeue one failed job with `documents:write`. |
+| `GET` | `/documents/{document_id}/indexing-status` | Inspect current vector progress and safe indexing state with `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction` | Inspect safe extraction metadata with `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction/chunks` | Inspect ordered, paginated chunks with `documents:read`. |
 | `POST` | `/documents/{document_id}/reprocess` | Queue replacement extraction with `documents:write`; returns `202 Accepted`. |
