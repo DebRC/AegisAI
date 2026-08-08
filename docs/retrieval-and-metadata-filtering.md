@@ -9,10 +9,9 @@ and vector validity. Phase 10 does not generate an LLM answer or provide chat.
 
 ## 10.1 Retrieval contract and search policy
 
-The future read-only search endpoint is `POST /retrieval/search`. Its route is
-deliberately deferred to checkpoint 10.7, when a real retrieval service can
-enforce the contract below. Registering an endpoint that cannot retrieve would
-mislead clients and create an unsupported public API.
+The read-only search endpoint is `POST /retrieval/search`. It accepts the
+contract below and is protected by the existing global `documents:read`
+permission. Per-document and tenant-aware authorization remain Phase 12 work.
 
 `RetrievalSearchRequest` accepts only:
 
@@ -35,8 +34,7 @@ Results are ordered highest score first and use deterministic tie-breaking in
 the retrieval service. Empty matches return an empty `items` list, while invalid
 input is rejected by request validation.
 
-The eventual endpoint requires the existing global `documents:read` permission.
-That is not document-level authorization: Phase 12 will add permission-aware
+This is not document-level authorization: Phase 12 will add permission-aware
 and tenant-aware retrieval before semantic results can be exposed under a
 resource-specific policy.
 
@@ -116,5 +114,5 @@ collection names, provider responses, and embedding records remain internal.
 - [x] 10.4 Metadata filters
 - [x] 10.5 PostgreSQL authority checks
 - [x] 10.6 Retrieval service and ranking
-- [ ] 10.7 Retrieval API and current RBAC
+- [x] 10.7 Retrieval API and current RBAC
 - [ ] 10.8 Tests, Docker verification, and documentation

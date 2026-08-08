@@ -4,6 +4,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.database import get_db
+from app.embeddings.factory import create_embedding_provider
+from app.integrations.vector_store.qdrant_client import create_qdrant_client
+from app.integrations.vector_store.qdrant_store import QdrantVectorStore
 from app.integrations.sso.factory import SsoProviderFactory
 from app.security.sso_transactions import SsoTransactionManager
 from app.services.auth_service import AuthService
@@ -11,7 +14,10 @@ from app.services.document_service import DocumentService
 from app.services.document_extraction_query_service import DocumentExtractionQueryService
 from app.services.document_embedding_status_service import DocumentEmbeddingStatusService
 from app.services.processing_job_service import ProcessingJobService
+from app.services.query_embedding_service import QueryEmbeddingService
 from app.services.rbac_service import RbacService
+from app.services.retrieval_authority_service import RetrievalAuthorityService
+from app.services.retrieval_service import RetrievalService
 from app.services.sso_account_service import SsoAccountService
 from app.storage.documents import DocumentStorage
 from app.storage.documents import LocalDocumentStorage
@@ -59,6 +65,29 @@ def get_processing_job_service(
     db: Session = Depends(get_db),
 ) -> ProcessingJobService:
     return ProcessingJobService(db)
+
+
+def get_query_embedding_service() -> QueryEmbeddingService:
+    return QueryEmbeddingService(
+        settings,
+        lambda: create_embedding_provider(settings),
+    )
+
+
+def get_retrieval_authority_service(
+    db: Session = Depends(get_db),
+) -> RetrievalAuthorityService:
+    return RetrievalAuthorityService(db, settings)
+
+
+def get_retrieval_service(
+    query_embeddings: QueryEmbeddingService = Depends(get_query_embedding_service),
+    authority: RetrievalAuthorityService = Depends(get_retrieval_authority_service),
+) -> RetrievalService:
+    def create_vector_store() -> QdrantVectorStore:
+        return QdrantVectorStore(create_qdrant_client(settings), settings)
+
+    return RetrievalService(query_embeddings, authority, create_vector_store)
 
 
 def get_sso_account_service(

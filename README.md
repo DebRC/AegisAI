@@ -281,6 +281,7 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | `GET` | `/documents/{document_id}/processing-jobs` | Inspect safe job history with `documents:read`. |
 | `POST` | `/documents/{document_id}/processing-jobs/{job_id}/retry` | Requeue one failed job with `documents:write`. |
 | `GET` | `/documents/{document_id}/indexing-status` | Inspect current vector progress and safe indexing state with `documents:read`. |
+| `POST` | `/retrieval/search` | Perform bounded semantic search with metadata filters and `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction` | Inspect safe extraction metadata with `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction/chunks` | Inspect ordered, paginated chunks with `documents:read`. |
 | `POST` | `/documents/{document_id}/reprocess` | Queue replacement extraction with `documents:write`; returns `202 Accepted`. |
