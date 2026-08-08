@@ -79,13 +79,28 @@ unsupported MIME types, and arbitrary filter objects are rejected before any
 Qdrant request. The caller still cannot select fields, operators, collections,
 or score expressions.
 
+## 10.5 PostgreSQL authority checks
+
+`RetrievalAuthorityService` resolves Qdrant point IDs through one joined
+PostgreSQL query covering the active document, its current extraction, current
+chunk, and matching embedding pointer. A row is accepted only when the document
+is `READY` and not soft-deleted, the embedding uses the active provider, model,
+collection, and dimension, and its checksum matches the current chunk checksum.
+
+The service also compares all seven safe Qdrant payload fields with the
+authoritative relational values. Missing rows, deleted documents, superseded
+extractions, stale checksums, wrong index identity, metadata-filter misses, and
+payload mismatches are silently discarded as candidates. Qdrant therefore
+remains a derived candidate index and never becomes the source of document text
+or authorization state.
+
 ## Delivery checkpoints
 
 - [x] 10.1 Retrieval contract and search policy
 - [x] 10.2 Query-embedding boundary
 - [x] 10.3 Qdrant similarity-search boundary
 - [x] 10.4 Metadata filters
-- [ ] 10.5 PostgreSQL authority checks
+- [x] 10.5 PostgreSQL authority checks
 - [ ] 10.6 Retrieval service and ranking
 - [ ] 10.7 Retrieval API and current RBAC
 - [ ] 10.8 Tests, Docker verification, and documentation
