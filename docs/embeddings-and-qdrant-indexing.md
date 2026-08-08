@@ -193,6 +193,40 @@ Safe stored/API errors use messages such as `Embeddings could not be generated
 for this document.` or `Document vectors could not be indexed.` Provider HTTP
 bodies, credentials, stack traces, and Qdrant internals remain in worker logs.
 
+## Local verification and operations
+
+The normal local command remains:
+
+```bash
+docker compose up --build --force-recreate
+```
+
+It runs the unit suite and validates the complete Alembic upgrade SQL during the
+image build, then applies migrations before the API and workers start. It does
+not call an embedding provider by itself. To exercise real indexing, set
+`OPENAI_API_KEY` in the uncommitted `backend/.env`, upload a supported document,
+and wait for its source-validation and extraction jobs to succeed.
+
+Use the normal document-job history endpoint to find the `embedding_indexing`
+job, or use the concise progress endpoint:
+
+```bash
+curl http://localhost:8000/documents/DOCUMENT_ID/indexing-status \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
+```
+
+`documents:read` is required. The successful result has `indexed_chunks` equal
+to `total_chunks` and `indexing_status` equal to `succeeded`. A failed job
+remains retryable through the existing processing-job retry endpoint, which
+requires `documents:write`. Do not retry a queued or running job. The status
+and job APIs intentionally omit credentials, raw provider errors, Qdrant
+collection names, point IDs, and broker task identifiers.
+
+When changing the active provider, model, or vector dimension, first select a
+new `QDRANT_COLLECTION_NAME`; Qdrant collection schemas are immutable. Then
+deliberately reprocess documents. AegisAI does not automatically mutate, delete,
+or recreate an existing incompatible collection.
+
 ## Authorization and future retrieval
 
 Phase 9 retains the established global `documents:read` and `documents:write`
@@ -216,4 +250,4 @@ receive semantic search results or citations.
 - [x] 9.6 Background indexing pipeline
 - [x] 9.7 Reprocessing, idempotency, and cleanup
 - [x] 9.8 Status visibility and authorization
-- [ ] 9.9 Tests, Docker verification, and documentation
+- [x] 9.9 Tests, Docker verification, and documentation
