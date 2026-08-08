@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 import math
-from typing import Sequence
+from typing import Mapping, Sequence
 from uuid import UUID
 
 from qdrant_client import QdrantClient, models
@@ -21,6 +21,8 @@ _PAYLOAD_INDEXES: tuple[tuple[str, models.PayloadSchemaType], ...] = (
     ("embedding_provider", models.PayloadSchemaType.KEYWORD),
     ("embedding_model", models.PayloadSchemaType.KEYWORD),
 )
+_PAYLOAD_FIELDS: tuple[str, ...] = tuple(field_name for field_name, _ in _PAYLOAD_INDEXES)
+_MAX_SEARCH_LIMIT = 100
 
 
 @dataclass(frozen=True)
@@ -83,6 +85,31 @@ class QdrantVectorPoint:
         }
 
 
+@dataclass(frozen=True)
+class QdrantSearchCandidate:
+    """A scored point with only the allow-listed retrieval payload."""
+
+    point_id: str
+    score: float
+    payload: Mapping[str, int | str]
+
+    def __post_init__(self) -> None:
+        try:
+            normalized_point_id = str(UUID(self.point_id))
+        except (AttributeError, TypeError, ValueError) as error:
+            raise ValueError("Qdrant search point_id must be a UUID") from error
+        if isinstance(self.score, bool) or not isinstance(self.score, (int, float)) or not math.isfinite(self.score):
+            raise ValueError("Qdrant search scores must be finite numbers")
+        normalized_payload = {
+            field_name: self.payload[field_name]
+            for field_name in _PAYLOAD_FIELDS
+            if field_name in self.payload
+        }
+        object.__setattr__(self, "point_id", normalized_point_id)
+        object.__setattr__(self, "score", float(self.score))
+        object.__setattr__(self, "payload", normalized_payload)
+
+
 class QdrantVectorStore:
     """Own the compatible collection contract and idempotent point operations."""
 
@@ -94,6 +121,7 @@ class QdrantVectorStore:
         collection_name: str | None = None,
     ) -> None:
         self._client = client
+        self._configuration = configuration
         self._collection_name = collection_name or configuration.QDRANT_COLLECTION_NAME
         self._vector_dimension = configuration.EMBEDDING_VECTOR_DIMENSION
 
@@ -158,6 +186,63 @@ class QdrantVectorStore:
             raise VectorStoreOperationError("Document vectors could not be removed.") from error
         return len(normalized_point_ids)
 
+    def search(
+        self,
+        *,
+        vector: Sequence[float],
+        provider: str,
+        model: str,
+        limit: int,
+    ) -> list[QdrantSearchCandidate]:
+        """Return active-identity similarity candidates without creating a collection."""
+        if provider != self._configuration_provider or model != self._configuration_model:
+            raise VectorStoreConfigurationError(
+                "The search embedding identity does not match the active configuration."
+            )
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_SEARCH_LIMIT:
+            raise ValueError(f"Qdrant search limit must be between 1 and {_MAX_SEARCH_LIMIT}")
+
+        normalized_vector = self._normalize_search_vector(vector)
+        query_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="embedding_provider",
+                    match=models.MatchValue(value=provider),
+                ),
+                models.FieldCondition(
+                    key="embedding_model",
+                    match=models.MatchValue(value=model),
+                ),
+            ]
+        )
+        try:
+            if not self._client.collection_exists(self._collection_name):
+                return []
+            collection = self._client.get_collection(self._collection_name)
+            self._validate_collection(collection.config.params.vectors)
+            response = self._client.query_points(
+                collection_name=self._collection_name,
+                query=normalized_vector,
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=list(_PAYLOAD_FIELDS),
+                with_vectors=False,
+            )
+            return [
+                QdrantSearchCandidate(
+                    point_id=str(point.id),
+                    score=point.score,
+                    payload=point.payload or {},
+                )
+                for point in response.points
+            ]
+        except VectorStoreConfigurationError:
+            raise
+        except ValueError as error:
+            raise VectorStoreOperationError("Document-vector search returned invalid data.") from error
+        except Exception as error:
+            raise VectorStoreOperationError("Document-vector storage is unavailable.") from error
+
     def close(self) -> None:
         """Release the worker-scoped client created for this store."""
         self._client.close()
@@ -191,6 +276,26 @@ class QdrantVectorStore:
             raise VectorStoreConfigurationError(
                 "The configured Qdrant collection does not match the active embedding configuration."
             )
+
+    @property
+    def _configuration_provider(self) -> str:
+        return self._configuration.EMBEDDING_PROVIDER
+
+    @property
+    def _configuration_model(self) -> str:
+        return self._configuration.EMBEDDING_MODEL
+
+    def _normalize_search_vector(self, vector: Sequence[float]) -> list[float]:
+        if len(vector) != self._vector_dimension:
+            raise VectorStoreConfigurationError(
+                "The search vector does not match the active embedding dimension."
+            )
+        normalized: list[float] = []
+        for value in vector:
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError("Qdrant search vectors must contain finite numbers")
+            normalized.append(float(value))
+        return normalized
 
     def _ensure_payload_indexes(self) -> None:
         for field_name, field_schema in _PAYLOAD_INDEXES:

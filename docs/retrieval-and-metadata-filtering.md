@@ -55,11 +55,25 @@ not cross into an API response, and the provider client is closed after every
 attempt, including failures. The service is injected with a provider factory so
 unit tests and future provider implementations do not require a network call.
 
+## 10.3 Qdrant similarity-search boundary
+
+`QdrantVectorStore.search` accepts only a finite vector, the active provider and
+model identity, and a bounded result limit. It rejects mismatched identity or
+dimension before contacting Qdrant. The query uses the configured collection,
+cosine-compatible vector schema, and an explicit provider/model payload filter;
+clients cannot select a collection or submit an arbitrary Qdrant expression.
+
+An absent collection returns no candidates and does not create one. Each result
+is normalized to a typed `QdrantSearchCandidate` containing a UUID point ID, a
+finite similarity score, and only the existing allow-listed metadata payload.
+Vectors are never returned from the search boundary. Qdrant failures and
+malformed results become safe vector-store errors for the retrieval service.
+
 ## Delivery checkpoints
 
 - [x] 10.1 Retrieval contract and search policy
 - [x] 10.2 Query-embedding boundary
-- [ ] 10.3 Qdrant similarity-search boundary
+- [x] 10.3 Qdrant similarity-search boundary
 - [ ] 10.4 Metadata filters
 - [ ] 10.5 PostgreSQL authority checks
 - [ ] 10.6 Retrieval service and ranking
