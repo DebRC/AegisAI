@@ -40,10 +40,25 @@ That is not document-level authorization: Phase 12 will add permission-aware
 and tenant-aware retrieval before semantic results can be exposed under a
 resource-specific policy.
 
+## 10.2 Query-embedding boundary
+
+`QueryEmbeddingService` adapts one validated `RetrievalSearchRequest` to the
+existing `EmbeddingProvider` protocol. It calls `embed` with exactly one
+normalized query string, verifies that exactly one vector was returned, and
+requires the provider, model, and vector dimension to match the active settings.
+The returned `QueryEmbedding` carries only the finite vector and that validated
+identity; query vectors are not persisted.
+
+Provider configuration, transport, response, and validation failures become a
+single safe `QueryEmbeddingError` boundary. Provider details and credentials do
+not cross into an API response, and the provider client is closed after every
+attempt, including failures. The service is injected with a provider factory so
+unit tests and future provider implementations do not require a network call.
+
 ## Delivery checkpoints
 
 - [x] 10.1 Retrieval contract and search policy
-- [ ] 10.2 Query-embedding boundary
+- [x] 10.2 Query-embedding boundary
 - [ ] 10.3 Qdrant similarity-search boundary
 - [ ] 10.4 Metadata filters
 - [ ] 10.5 PostgreSQL authority checks
