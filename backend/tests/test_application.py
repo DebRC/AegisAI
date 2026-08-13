@@ -16,10 +16,14 @@ from app.api import documents as documents_api
 from app.api import health as health_api
 from app.api import protected as protected_api
 from app.api import rbac as rbac_api
+from app.api import retrieval as retrieval_api
 from app.api.dependencies import get_auth_service
 from app.api.dependencies import get_document_service
 from app.api.dependencies import get_document_extraction_query_service
 from app.api.dependencies import get_rbac_service
+from app.api.dependencies import get_retrieval_authority_service
+from app.api.dependencies import get_retrieval_service
+from app.api.dependencies import get_query_embedding_service
 from app.api.dependencies import get_sso_account_service
 from app.core.exceptions import AuthenticationError
 from app.core.exceptions import DocumentNotFoundError
@@ -44,6 +48,10 @@ from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
 from app.services.document_extraction_query_service import DocumentExtractionQueryService
 from app.services.rbac_service import RbacService
+from app.services.query_embedding_service import QueryEmbeddingError
+from app.services.query_embedding_service import QueryEmbeddingService
+from app.services.retrieval_authority_service import RetrievalAuthorityService
+from app.services.retrieval_service import RetrievalService
 from app.services.sso_account_service import SsoAccountService
 from app.storage.documents import DocumentStorageError
 
@@ -74,6 +82,30 @@ class ApplicationTests(unittest.TestCase):
             get_document_extraction_query_service(session),
             DocumentExtractionQueryService,
         )
+        self.assertIsInstance(get_query_embedding_service(), QueryEmbeddingService)
+        self.assertIsInstance(get_retrieval_authority_service(session), RetrievalAuthorityService)
+        self.assertIsInstance(
+            get_retrieval_service(Mock(), Mock()),
+            RetrievalService,
+        )
+
+    def test_retrieval_route_requires_read_permission_and_translates_failures(self) -> None:
+        route = next(route for route in retrieval_api.router.routes if route.path == "/retrieval/search")
+        self.assertEqual(self._route_permission(route), PermissionCode.DOCUMENTS_READ)
+
+        from app.schemas.retrieval import RetrievalSearchRequest
+        from app.schemas.retrieval import RetrievalSearchResponse
+
+        request = RetrievalSearchRequest(query="policy")
+        service = Mock()
+        service.search.return_value = RetrievalSearchResponse(items=[], limit=10)
+        self.assertEqual(retrieval_api.search(request, service).items, [])
+
+        service.search.side_effect = QueryEmbeddingError("provider details")
+        with self.assertRaises(HTTPException) as context:
+            retrieval_api.search(request, service)
+        self.assertEqual(context.exception.status_code, 503)
+        self.assertEqual(context.exception.detail, "Semantic retrieval is temporarily unavailable")
 
     def test_current_user_and_permission_dependencies(self) -> None:
         active_user = SimpleNamespace(id=5, is_active=True)
@@ -205,6 +237,10 @@ class ApplicationTests(unittest.TestCase):
         self.assertIn(
             "202",
             document_paths["/documents/{document_id}/reprocess"]["post"]["responses"],
+        )
+        self.assertIn(
+            {"AegisAI access token": []},
+            document_paths["/retrieval/search"]["post"]["security"],
         )
 
     def test_basic_routes_and_lifespan(self) -> None:

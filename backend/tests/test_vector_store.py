@@ -11,6 +11,7 @@ from app.integrations.vector_store.qdrant_client import create_qdrant_client
 from app.integrations.vector_store.exceptions import VectorStoreConfigurationError
 from app.integrations.vector_store.exceptions import VectorStoreOperationError
 from app.integrations.vector_store.qdrant_store import QdrantVectorPoint
+from app.integrations.vector_store.qdrant_store import QdrantSearchCandidate
 from app.integrations.vector_store.qdrant_store import QdrantVectorStore
 
 
@@ -204,6 +205,127 @@ class QdrantVectorStoreTests(unittest.TestCase):
             )
         finally:
             client.close()
+
+    def test_search_returns_scored_active_identity_candidates_without_vectors(self) -> None:
+        client = QdrantClient(":memory:")
+        store = QdrantVectorStore(client, self._configuration())
+        point = QdrantVectorPoint(
+            point_id="a911e79c-97e2-4b68-8974-803034fc62ca",
+            vector=(0.1, 0.2, 0.3),
+            document_id=3,
+            chunk_id=4,
+            document_extraction_id=5,
+            uploader_user_id=6,
+            content_type="text/plain",
+            embedding_provider="openai",
+            embedding_model="text-embedding-3-small",
+        )
+        second_point = QdrantVectorPoint(
+            point_id="b911e79c-97e2-4b68-8974-803034fc62ca",
+            vector=(0.1, 0.2, 0.3),
+            document_id=7,
+            chunk_id=8,
+            document_extraction_id=9,
+            uploader_user_id=10,
+            content_type="application/pdf",
+            embedding_provider="openai",
+            embedding_model="text-embedding-3-small",
+        )
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                store.upsert_points([point, second_point])
+
+            candidates = store.search(
+                vector=(0.1, 0.2, 0.3),
+                provider="openai",
+                model="text-embedding-3-small",
+                limit=5,
+            )
+
+            self.assertEqual(len(candidates), 2)
+            self.assertTrue(all(isinstance(candidate, QdrantSearchCandidate) for candidate in candidates))
+            point_candidate = next(candidate for candidate in candidates if candidate.point_id == point.point_id)
+            self.assertAlmostEqual(point_candidate.score, 1.0)
+            self.assertEqual(point_candidate.payload, point.payload)
+
+            filtered_candidates = store.search(
+                vector=(0.1, 0.2, 0.3),
+                provider="openai",
+                model="text-embedding-3-small",
+                limit=5,
+                document_ids=[3],
+                content_types=["text/plain"],
+            )
+            self.assertEqual([candidate.point_id for candidate in filtered_candidates], [point.point_id])
+        finally:
+            client.close()
+
+    def test_search_rejects_identity_or_dimension_mismatch_before_query(self) -> None:
+        client = Mock()
+        store = QdrantVectorStore(client, self._configuration())
+
+        with self.assertRaises(VectorStoreConfigurationError):
+            store.search(
+                vector=(1.0, 2.0, 3.0),
+                provider="other",
+                model="text-embedding-3-small",
+                limit=5,
+            )
+        with self.assertRaises(VectorStoreConfigurationError):
+            store.search(
+                vector=(1.0, 2.0),
+                provider="openai",
+                model="text-embedding-3-small",
+                limit=5,
+            )
+        client.collection_exists.assert_not_called()
+
+    def test_search_returns_empty_for_missing_collection_and_wraps_qdrant_failures(self) -> None:
+        client = Mock()
+        client.collection_exists.return_value = False
+        store = QdrantVectorStore(client, self._configuration())
+
+        self.assertEqual(
+            store.search(
+                vector=(1.0, 2.0, 3.0),
+                provider="openai",
+                model="text-embedding-3-small",
+                limit=5,
+            ),
+            [],
+        )
+
+        client.collection_exists.side_effect = RuntimeError("Qdrant internals")
+        with self.assertRaisesRegex(VectorStoreOperationError, "Document-vector storage is unavailable"):
+            store.search(
+                vector=(1.0, 2.0, 3.0),
+                provider="openai",
+                model="text-embedding-3-small",
+                limit=5,
+            )
+
+    def test_search_rejects_unsupported_or_duplicate_metadata_filters(self) -> None:
+        client = Mock()
+        store = QdrantVectorStore(client, self._configuration())
+
+        invalid_filters = (
+            {"document_ids": [1, 1]},
+            {"document_ids": [0]},
+            {"content_types": ["application/octet-stream"]},
+            {"content_types": ["text/plain", "text/plain"]},
+            {"content_types": []},
+        )
+        for overrides in invalid_filters:
+            with self.subTest(overrides=overrides), self.assertRaises(ValueError):
+                store.search(
+                    vector=(1.0, 2.0, 3.0),
+                    provider="openai",
+                    model="text-embedding-3-small",
+                    limit=5,
+                    **overrides,
+                )
+        client.collection_exists.assert_not_called()
 
     def test_rejects_an_existing_collection_with_a_different_dimension_without_mutating_it(self) -> None:
         client = Mock()
