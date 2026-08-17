@@ -90,13 +90,29 @@ checkpoint decides whether that answer may be considered grounded. Citation
 records remain application data and never expose Qdrant point IDs, prompts, or
 provider payloads.
 
+## 11.5 RAG orchestration service
+
+`RagChatService` is the single workflow boundary for a chat turn. It converts
+the bounded chat request into a Phase 10 retrieval request, builds a prompt
+only from PostgreSQL-verified results, streams non-empty provider text
+fragments, accumulates the completed answer, then validates its source labels.
+It emits provider-neutral domain events; the next checkpoint serializes those
+events as SSE.
+
+No retrieval results means no model call. The service returns a fixed
+insufficient-context message and a terminal completion with `answered=false`
+and no citations. A model answer must contain at least one application-issued
+source label; empty, uncited, unknown, or malformed source output fails before
+any success completion is issued. Retrieval filters remain exactly those from
+the original request.
+
 ## Delivery checkpoints
 
 - [x] 11.1 Chat contract and grounding policy
 - [x] 11.2 Chat-model configuration and provider boundary
 - [x] 11.3 Safe prompt/context builder
 - [x] 11.4 Citation model and validation
-- [ ] 11.5 RAG orchestration service
+- [x] 11.5 RAG orchestration service
 - [ ] 11.6 SSE streaming protocol
 - [ ] 11.7 Protected chat API
 - [ ] 11.8 Optional conversation contract
