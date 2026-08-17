@@ -93,3 +93,7 @@ class RagChatService:
         if not citations:
             raise RagChatServiceError("Generated answer did not include a verified source citation")
         yield ChatCompletion(answered=True, citations=citations)
+
+    def close(self) -> None:
+        """Release the per-request provider after its HTTP stream ends."""
+        self.chat_provider.close()

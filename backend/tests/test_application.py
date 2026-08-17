@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api import auth as auth_api
+from app.api import chat as chat_api
 from app.api import database as database_api
 from app.api import documents as documents_api
 from app.api import health as health_api
@@ -24,6 +25,7 @@ from app.api.dependencies import get_rbac_service
 from app.api.dependencies import get_retrieval_authority_service
 from app.api.dependencies import get_retrieval_service
 from app.api.dependencies import get_query_embedding_service
+from app.api.dependencies import get_rag_chat_service
 from app.api.dependencies import get_sso_account_service
 from app.core.exceptions import AuthenticationError
 from app.core.exceptions import DocumentNotFoundError
@@ -50,6 +52,7 @@ from app.services.document_extraction_query_service import DocumentExtractionQue
 from app.services.rbac_service import RbacService
 from app.services.query_embedding_service import QueryEmbeddingError
 from app.services.query_embedding_service import QueryEmbeddingService
+from app.services.rag_chat_service import RagChatService
 from app.services.retrieval_authority_service import RetrievalAuthorityService
 from app.services.retrieval_service import RetrievalService
 from app.services.sso_account_service import SsoAccountService
@@ -88,6 +91,24 @@ class ApplicationTests(unittest.TestCase):
             get_retrieval_service(Mock(), Mock()),
             RetrievalService,
         )
+        with patch("app.api.dependencies.create_chat_model_provider", return_value=Mock()):
+            self.assertIsInstance(get_rag_chat_service(Mock()), RagChatService)
+
+    def test_chat_route_requires_read_permission_and_returns_a_non_buffered_sse_response(self) -> None:
+        route = next(route for route in chat_api.router.routes if route.path == "/chat/stream")
+        self.assertEqual(self._route_permission(route), PermissionCode.DOCUMENTS_READ)
+
+        from app.schemas.chat import ChatStreamRequest
+        from app.services.rag_chat_service import ChatAnswerFragment
+        from app.services.rag_chat_service import ChatCompletion
+
+        service = Mock()
+        service.stream.return_value = iter((ChatAnswerFragment("No context."), ChatCompletion(False, ())))
+        response = chat_api.stream(ChatStreamRequest(question="Question"), service)
+
+        self.assertEqual(response.media_type, "text/event-stream")
+        self.assertEqual(response.headers["cache-control"], "no-cache, no-transform")
+        self.assertEqual(response.headers["x-accel-buffering"], "no")
 
     def test_retrieval_route_requires_read_permission_and_translates_failures(self) -> None:
         route = next(route for route in retrieval_api.router.routes if route.path == "/retrieval/search")
@@ -242,6 +263,10 @@ class ApplicationTests(unittest.TestCase):
             {"AegisAI access token": []},
             document_paths["/retrieval/search"]["post"]["security"],
         )
+        self.assertIn(
+            {"OAuth2PasswordBearer": []},
+            document_paths["/chat/stream"]["post"]["security"],
+        )
 
     def test_basic_routes_and_lifespan(self) -> None:
         self.assertEqual(health_api.health(), {"status": "healthy"})
@@ -254,6 +279,7 @@ class ApplicationTests(unittest.TestCase):
     async def _exercise_lifespan(self) -> None:
         async with app.router.lifespan_context(app):
             pass
+
 
     def test_database_health_executes_query_and_closes_session(self) -> None:
         session = Mock()

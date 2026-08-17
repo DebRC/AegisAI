@@ -121,6 +121,21 @@ temporarily unavailable`. The stream never serializes exception text, provider
 events, prompt contents, credentials, or vector-store identifiers. The public
 route, response headers, and authorization are deliberately deferred to 11.7.
 
+## 11.7 Protected chat API and current RBAC
+
+`POST /chat/stream` accepts `ChatStreamRequest` and returns
+`text/event-stream`. The existing `documents:read` permission is required
+before a request can enter the chat workflow. The route creates a
+request-scoped chat provider, passes the service event iterator through the SSE
+adapter, disables proxy buffering with `X-Accel-Buffering: no`, and closes the
+provider when the stream ends or the client disconnects.
+
+This checkpoint authorizes access at the current global permission level only.
+It does not add document-owner, organization, tenant, or per-document policies;
+those are explicitly Phase 12 work. Use a POST-capable streaming client such as
+`fetch` or `curl -N`; browser `EventSource` is GET-only and does not support
+this authenticated request body.
+
 ## Delivery checkpoints
 
 - [x] 11.1 Chat contract and grounding policy
@@ -129,6 +144,6 @@ route, response headers, and authorization are deliberately deferred to 11.7.
 - [x] 11.4 Citation model and validation
 - [x] 11.5 RAG orchestration service
 - [x] 11.6 SSE streaming protocol
-- [ ] 11.7 Protected chat API
+- [x] 11.7 Protected chat API
 - [ ] 11.8 Optional conversation contract
 - [ ] 11.9 Tests, Docker verification, and documentation

@@ -11,6 +11,7 @@ try:
     from app.api.rbac import router as rbac_router
     from app.api.documents import router as documents_router
     from app.api.retrieval import router as retrieval_router
+    from app.api.chat import router as chat_router
     from app.core.config import settings
     from app.core.logging import logger
 except ModuleNotFoundError as exc:
@@ -24,6 +25,7 @@ except ModuleNotFoundError as exc:
     from app.api.rbac import router as rbac_router
     from app.api.documents import router as documents_router
     from app.api.retrieval import router as retrieval_router
+    from app.api.chat import router as chat_router
     from core.config import settings
     from core.logging import logger
 
@@ -47,6 +49,7 @@ app.include_router(sso_router)
 app.include_router(rbac_router)
 app.include_router(documents_router)
 app.include_router(retrieval_router)
+app.include_router(chat_router)
 
 @app.get("/")
 def root():

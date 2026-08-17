@@ -1,0 +1,44 @@
+"""Protected SSE endpoint for grounded RAG chat."""
+
+from collections.abc import Iterator
+
+from fastapi import APIRouter
+from fastapi import Depends
+from fastapi.responses import StreamingResponse
+
+from app.api.dependencies import get_rag_chat_service
+from app.chat.streaming import stream_chat_sse
+from app.schemas.chat import ChatStreamRequest
+from app.security.dependencies import require_permission
+from app.security.permissions import PermissionCode
+from app.services.rag_chat_service import RagChatService
+
+
+router = APIRouter(prefix="/chat", tags=["Chat"])
+
+
+@router.post(
+    "/stream",
+    response_class=StreamingResponse,
+    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
+    summary="Stream a grounded answer with verified document citations",
+)
+def stream(
+    request: ChatStreamRequest,
+    service: RagChatService = Depends(get_rag_chat_service),
+) -> StreamingResponse:
+    """Return the Phase 11 SSE contract after existing document-read RBAC passes."""
+    def event_stream() -> Iterator[str]:
+        try:
+            yield from stream_chat_sse(service.stream(request))
+        finally:
+            service.close()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
