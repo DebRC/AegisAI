@@ -106,6 +106,21 @@ source label; empty, uncited, unknown, or malformed source output fails before
 any success completion is issued. Retrieval filters remain exactly those from
 the original request.
 
+## 11.6 SSE streaming protocol
+
+`stream_chat_sse` is the transport adapter between `RagChatService` and the
+future FastAPI route. Every SSE message has an `event:` name and one JSON
+`data:` payload using the public Phase 11 schemas. A successful grounded answer
+emits zero or more `answer_delta` events, then one `citations` event, then one
+`done` event. Insufficient context emits its fixed answer delta followed by
+`done` with `answered=false` and `citation_count=0`.
+
+Expected retrieval, database, vector, embedding, provider, or grounding errors
+become one terminal `error` event with the fixed message `Grounded chat is
+temporarily unavailable`. The stream never serializes exception text, provider
+events, prompt contents, credentials, or vector-store identifiers. The public
+route, response headers, and authorization are deliberately deferred to 11.7.
+
 ## Delivery checkpoints
 
 - [x] 11.1 Chat contract and grounding policy
@@ -113,7 +128,7 @@ the original request.
 - [x] 11.3 Safe prompt/context builder
 - [x] 11.4 Citation model and validation
 - [x] 11.5 RAG orchestration service
-- [ ] 11.6 SSE streaming protocol
+- [x] 11.6 SSE streaming protocol
 - [ ] 11.7 Protected chat API
 - [ ] 11.8 Optional conversation contract
 - [ ] 11.9 Tests, Docker verification, and documentation

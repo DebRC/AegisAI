@@ -13,3 +13,6 @@ backend/app/schemas/__pycache__/
 backend/app/security/__pycache__/
 backend/app/services/__pycache__/
 backend/app/chat/__pycache__
+backend/app/embeddings/__pycache__
+backend/app/integrations/__pycache__
+backend/app/integrations/vector_store/__pycache__

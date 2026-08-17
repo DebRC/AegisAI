@@ -19,7 +19,7 @@ The backend foundation, document-ingestion boundary, background-processing runti
 | Knowledge processing | Available | Workers safely extract supported files, normalize text, create deterministic chunks, and persist traceable output for later embedding. |
 | Vector indexing | Available | Workers queue and process OpenAI embeddings into validated Qdrant collections with traceable PostgreSQL records, cleanup, and safe progress visibility. |
 | Semantic retrieval | Available | Bounded metadata-filtered search validates Qdrant candidates against current PostgreSQL documents, chunks, and embedding records. |
-| RAG chat | In progress | Grounded retrieval-to-generation orchestration, bounded prompts, and application-issued citations are defined; transport and API work remain. |
+| RAG chat | In progress | Grounded retrieval-to-generation orchestration, application-issued citations, and a strict SSE event protocol are defined; protected API work remains. |
 
 Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; Phase 9.6 automatically indexes document vectors after extraction when `OPENAI_API_KEY` is configured.
 
