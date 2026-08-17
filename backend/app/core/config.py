@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     CHAT_MODEL: str = Field(default="gpt-5.6", min_length=1, max_length=255)
     CHAT_REQUEST_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0, le=300)
     CHAT_MAX_OUTPUT_TOKENS: int = Field(default=1_024, ge=1, le=16_384)
+    CHAT_MAX_CONTEXT_CHARACTERS: int = Field(default=24_000, ge=1_000, le=500_000)
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_API_KEY: SecretStr | None = None
 

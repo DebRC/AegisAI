@@ -58,11 +58,28 @@ payloads, HTTP errors, and credentials stay inside the adapter. Future RAG code
 can use a fake provider in tests or add another configured implementation
 without changing retrieval, citations, or the HTTP API.
 
+## 11.3 Safe prompt and context builder
+
+`GroundedPromptBuilder` accepts only the already-authoritative Phase 10
+retrieval results. It gives each included result a deterministic application
+label (`S1`, `S2`, ...) and separates the prompt into a trusted `developer`
+message and a `user` message containing explicitly delimited source data and
+the question. It never accepts instructions, model controls, source labels, or
+raw vector data from the client.
+
+`CHAT_MAX_CONTEXT_CHARACTERS` bounds the combined source headers and document
+text in one prompt. Sources are included in retrieval order, the final source
+is truncated to fit the exact remaining budget, and later sources are omitted.
+The trusted instructions explicitly treat retrieved document text as untrusted
+reference data and require an insufficient-context answer when it cannot
+support the question. The builder retains only source ID, document ID, and
+chunk ID for later application-side citation validation.
+
 ## Delivery checkpoints
 
 - [x] 11.1 Chat contract and grounding policy
 - [x] 11.2 Chat-model configuration and provider boundary
-- [ ] 11.3 Safe prompt/context builder
+- [x] 11.3 Safe prompt/context builder
 - [ ] 11.4 Citation model and validation
 - [ ] 11.5 RAG orchestration service
 - [ ] 11.6 SSE streaming protocol

@@ -43,6 +43,7 @@ class VectorStoreConfigurationTests(unittest.TestCase):
         self.assertEqual(configuration.CHAT_MODEL, "gpt-5.6")
         self.assertEqual(configuration.CHAT_REQUEST_TIMEOUT_SECONDS, 60.0)
         self.assertEqual(configuration.CHAT_MAX_OUTPUT_TOKENS, 1_024)
+        self.assertEqual(configuration.CHAT_MAX_CONTEXT_CHARACTERS, 24_000)
 
     def test_rejects_invalid_vector_store_and_embedding_configuration(self) -> None:
         invalid_values = (
@@ -54,6 +55,7 @@ class VectorStoreConfigurationTests(unittest.TestCase):
             {"EMBEDDING_REQUEST_TIMEOUT_SECONDS": 121},
             {"CHAT_REQUEST_TIMEOUT_SECONDS": 0},
             {"CHAT_MAX_OUTPUT_TOKENS": 0},
+            {"CHAT_MAX_CONTEXT_CHARACTERS": 999},
             {"OPENAI_BASE_URL": "api.openai.com/v1"},
         )
 
