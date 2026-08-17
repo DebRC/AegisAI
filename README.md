@@ -19,7 +19,7 @@ The backend foundation, document-ingestion boundary, background-processing runti
 | Knowledge processing | Available | Workers safely extract supported files, normalize text, create deterministic chunks, and persist traceable output for later embedding. |
 | Vector indexing | Available | Workers queue and process OpenAI embeddings into validated Qdrant collections with traceable PostgreSQL records, cleanup, and safe progress visibility. |
 | Semantic retrieval | Available | Bounded metadata-filtered search validates Qdrant candidates against current PostgreSQL documents, chunks, and embedding records. |
-| RAG chat | In progress | Grounded streaming-answer and citation contract is defined; provider, prompt, and API work remain. |
+| RAG chat | In progress | Grounded streaming-answer contract and isolated OpenAI provider are defined; prompt, citation, and API work remain. |
 
 Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; Phase 9.6 automatically indexes document vectors after extraction when `OPENAI_API_KEY` is configured.
 
@@ -229,7 +229,8 @@ Copy [backend/.env.example](backend/.env.example) to `backend/.env`. Do not comm
 | `DATABASE_URL` | PostgreSQL connection URL. Inside Compose, the hostname must remain `postgres`. |
 | `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION_NAME` | Qdrant connection and active derived-vector collection. A key is optional for local Docker. |
 | `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_VECTOR_DIMENSION` | Active embedding shape. Changing the dimension requires a new collection and deliberate reindex. |
-| `OPENAI_BASE_URL`, `OPENAI_API_KEY` | OpenAI embedding endpoint and secret. The key is needed only when Phase 9 worker indexing is enabled. |
+| `OPENAI_BASE_URL`, `OPENAI_API_KEY` | Shared OpenAI endpoint and secret for configured embedding and chat providers. The key is required only when an indexing, retrieval, or chat operation uses OpenAI. |
+| `CHAT_PROVIDER`, `CHAT_MODEL`, `CHAT_REQUEST_TIMEOUT_SECONDS`, `CHAT_MAX_OUTPUT_TOKENS` | Phase 11 streaming-generation provider, model, request timeout, and bounded response budget. These do not change the embedding collection shape. |
 | `DOCUMENT_STORAGE_PATH` | Local original-document storage path. Compose mounts the persistent `document_data` volume at this path. |
 | `DOCUMENT_MAX_UPLOAD_BYTES` | Maximum streamed upload size. The default is 25 MiB and is enforced by the upload service. |
 | `DOCUMENT_MAX_EXTRACTED_TEXT_CHARACTERS` | Maximum parser output retained from one document; default 5,000,000 characters. |

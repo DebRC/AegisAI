@@ -42,10 +42,26 @@ Grounding policy:
 4. Never stream provider internals, prompts containing hidden instructions,
    credentials, point IDs, collections, or raw exception details.
 
+## 11.2 Chat-model configuration and provider boundary
+
+Chat generation has its own `CHAT_PROVIDER`, `CHAT_MODEL`,
+`CHAT_REQUEST_TIMEOUT_SECONDS`, and `CHAT_MAX_OUTPUT_TOKENS` settings. This
+keeps a generation-model change from changing the embedding model or vector
+shape. The existing `OPENAI_API_KEY` and `OPENAI_BASE_URL` are shared only as
+the authenticated OpenAI connection settings; neither is exposed to clients.
+
+`ChatModelProvider` receives only application-owned `developer` and `user`
+messages and yields non-empty answer text fragments. The first adapter uses
+OpenAI's Responses API with `stream=true`, consumes typed SSE events, and
+forwards only `response.output_text.delta` values. Provider event names, raw
+payloads, HTTP errors, and credentials stay inside the adapter. Future RAG code
+can use a fake provider in tests or add another configured implementation
+without changing retrieval, citations, or the HTTP API.
+
 ## Delivery checkpoints
 
 - [x] 11.1 Chat contract and grounding policy
-- [ ] 11.2 Chat-model configuration and provider boundary
+- [x] 11.2 Chat-model configuration and provider boundary
 - [ ] 11.3 Safe prompt/context builder
 - [ ] 11.4 Citation model and validation
 - [ ] 11.5 RAG orchestration service
