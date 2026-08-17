@@ -19,7 +19,7 @@ The backend foundation, document-ingestion boundary, background-processing runti
 | Knowledge processing | Available | Workers safely extract supported files, normalize text, create deterministic chunks, and persist traceable output for later embedding. |
 | Vector indexing | Available | Workers queue and process OpenAI embeddings into validated Qdrant collections with traceable PostgreSQL records, cleanup, and safe progress visibility. |
 | Semantic retrieval | Available | Bounded metadata-filtered search validates Qdrant candidates against current PostgreSQL documents, chunks, and embedding records. |
-| RAG chat | Planned | Streaming answers, citations, and permission-aware conversational retrieval. |
+| RAG chat | In progress | Grounded streaming-answer and citation contract is defined; provider, prompt, and API work remain. |
 
 Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; Phase 9.6 automatically indexes document vectors after extraction when `OPENAI_API_KEY` is configured.
 
@@ -57,6 +57,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Text extraction and chunking design](docs/text-extraction-and-chunking.md) defines the implemented Phase 8 format, lifecycle, traceability, safety, and manual-verification contract.
 - [Embeddings and Qdrant indexing design](docs/embeddings-and-qdrant-indexing.md) defines the Phase 9 vector, lifecycle, idempotency, and safety contract.
 - [Retrieval and metadata filtering design](docs/retrieval-and-metadata-filtering.md) defines the implemented Phase 10 search contract, authority checks, API, and verification workflow.
+- [RAG chat and citations design](docs/rag-chat-and-citations.md) defines the in-progress Phase 11 grounding, streaming, and citation contract.
 
 ## Architecture
 
