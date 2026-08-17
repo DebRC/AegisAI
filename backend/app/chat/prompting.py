@@ -17,7 +17,12 @@ class PromptSource:
 
     source_id: str
     document_id: int
+    document_title: str
+    content_type: str
     chunk_id: int
+    chunk_ordinal: int
+    source_locations: tuple[dict[str, int | str], ...] | None
+    score: float
 
 
 @dataclass(frozen=True)
@@ -70,7 +75,23 @@ to its source label in square brackets, for example [S1]."""
                 break
             content = result.content[:available_content]
             rendered_sources.append(f"{header}{content}{footer}")
-            sources.append(PromptSource(source_id, result.document_id, result.chunk_id))
+            locations = (
+                tuple(dict(location) for location in result.source_locations)
+                if result.source_locations is not None
+                else None
+            )
+            sources.append(
+                PromptSource(
+                    source_id=source_id,
+                    document_id=result.document_id,
+                    document_title=result.document_title,
+                    content_type=result.content_type,
+                    chunk_id=result.chunk_id,
+                    chunk_ordinal=result.chunk_ordinal,
+                    source_locations=locations,
+                    score=result.score,
+                )
+            )
             remaining -= len(header) + len(content) + len(footer)
 
         if not sources:

@@ -72,15 +72,30 @@ text in one prompt. Sources are included in retrieval order, the final source
 is truncated to fit the exact remaining budget, and later sources are omitted.
 The trusted instructions explicitly treat retrieved document text as untrusted
 reference data and require an insufficient-context answer when it cannot
-support the question. The builder retains only source ID, document ID, and
-chunk ID for later application-side citation validation.
+support the question. The builder retains the verified source metadata needed
+for later application-side citation validation.
+
+## 11.4 Citation model and validation
+
+The model may write visible labels such as `[S1]`, but labels never create a
+citation by themselves. `CitationValidator` reads only source labels issued by
+`GroundedPromptBuilder`, rejects unknown or malformed labels, removes repeated
+references, and creates `ChatCitation` records from the original verified
+document, chunk, location, and score metadata. This means the model cannot
+invent a document ID, title, location, score, or source outside the retrieved
+prompt context.
+
+An answer without a source label produces no citations; the later orchestration
+checkpoint decides whether that answer may be considered grounded. Citation
+records remain application data and never expose Qdrant point IDs, prompts, or
+provider payloads.
 
 ## Delivery checkpoints
 
 - [x] 11.1 Chat contract and grounding policy
 - [x] 11.2 Chat-model configuration and provider boundary
 - [x] 11.3 Safe prompt/context builder
-- [ ] 11.4 Citation model and validation
+- [x] 11.4 Citation model and validation
 - [ ] 11.5 RAG orchestration service
 - [ ] 11.6 SSE streaming protocol
 - [ ] 11.7 Protected chat API
