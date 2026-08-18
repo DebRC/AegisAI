@@ -153,6 +153,25 @@ refer to the current verified retrieval results. Persisted, shared, tenant-aware
 conversation management is deferred until its authorization and retention model
 can be designed deliberately.
 
+## 11.9 Verification and operations
+
+The unit suite covers request/history validation, prompt boundaries, provider
+configuration and failures, verified-citation validation, RAG orchestration,
+safe SSE event ordering, route RBAC, and provider cleanup after a completed or
+interrupted stream. The Docker image runs the suite and renders the complete
+Alembic upgrade SQL during its build. The Compose backend runs the suite again,
+upgrades PostgreSQL to the current migration head, and starts Uvicorn only if
+those gates pass.
+
+For a manual streamed-answer check, first upload, process, and index a document
+and use an access token with `documents:read`. Then send a POST-capable streaming
+request to `POST /chat/stream`; see the concise command in the README. A grounded
+answer ends with `citations` and `done` SSE events. A question with no matching
+verified context ends with `done` where `answered` is `false` and makes no model
+request. A missing token receives `401`; a token without `documents:read`
+receives `403`. Raw provider errors and prompt contents never appear in the
+stream.
+
 ## Delivery checkpoints
 
 - [x] 11.1 Chat contract and grounding policy
@@ -163,4 +182,4 @@ can be designed deliberately.
 - [x] 11.6 SSE streaming protocol
 - [x] 11.7 Protected chat API
 - [x] 11.8 Optional conversation contract
-- [ ] 11.9 Tests, Docker verification, and documentation
+- [x] 11.9 Tests, Docker verification, and documentation

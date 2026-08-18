@@ -17,6 +17,17 @@ from app.services.rag_chat_service import RagChatService
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
+def chat_event_stream(
+    service: RagChatService,
+    request: ChatStreamRequest,
+) -> Iterator[str]:
+    """Adapt one chat turn to SSE and always release its provider resources."""
+    try:
+        yield from stream_chat_sse(service.stream(request))
+    finally:
+        service.close()
+
+
 @router.post(
     "/stream",
     response_class=StreamingResponse,
@@ -28,14 +39,8 @@ def stream(
     service: RagChatService = Depends(get_rag_chat_service),
 ) -> StreamingResponse:
     """Return the Phase 11 SSE contract after existing document-read RBAC passes."""
-    def event_stream() -> Iterator[str]:
-        try:
-            yield from stream_chat_sse(service.stream(request))
-        finally:
-            service.close()
-
     return StreamingResponse(
-        event_stream(),
+        chat_event_stream(service, request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",

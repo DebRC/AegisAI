@@ -110,6 +110,21 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-cache, no-transform")
         self.assertEqual(response.headers["x-accel-buffering"], "no")
 
+    def test_chat_event_stream_serializes_events_and_closes_the_service(self) -> None:
+        from app.schemas.chat import ChatStreamRequest
+        from app.services.rag_chat_service import ChatAnswerFragment
+        from app.services.rag_chat_service import ChatCompletion
+
+        service = Mock()
+        service.stream.return_value = iter((ChatAnswerFragment("No context."), ChatCompletion(False, ())))
+
+        messages = list(chat_api.chat_event_stream(service, ChatStreamRequest(question="Question")))
+
+        self.assertEqual(len(messages), 2)
+        self.assertTrue(messages[0].startswith("event: answer_delta\n"))
+        self.assertTrue(messages[1].startswith("event: done\n"))
+        service.close.assert_called_once_with()
+
     def test_retrieval_route_requires_read_permission_and_translates_failures(self) -> None:
         route = next(route for route in retrieval_api.router.routes if route.path == "/retrieval/search")
         self.assertEqual(self._route_permission(route), PermissionCode.DOCUMENTS_READ)

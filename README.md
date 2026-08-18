@@ -1,8 +1,8 @@
 # AegisAI
 
-AegisAI is a secure, enterprise-oriented knowledge platform in development. It is being built to let organizations ingest internal content, retrieve it safely, and eventually chat with it through a permission-aware RAG experience.
+AegisAI is a secure, enterprise-oriented knowledge platform in development. It lets organizations ingest internal content, retrieve it safely, and chat with it through a grounded RAG experience.
 
-The backend foundation, document-ingestion boundary, background-processing runtime, text-processing pipeline, embeddings, and semantic retrieval are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, secure document management, Redis/Celery workers, traceable chunks, validated Qdrant indexing, and PostgreSQL-authoritative search. RAG chat follows.
+The backend foundation, document-ingestion boundary, background-processing runtime, text-processing pipeline, embeddings, semantic retrieval, and grounded streaming chat are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, secure document management, Redis/Celery workers, traceable chunks, validated Qdrant indexing, PostgreSQL-authoritative search, and citation-verified RAG responses.
 
 ## Overview
 
@@ -19,7 +19,7 @@ The backend foundation, document-ingestion boundary, background-processing runti
 | Knowledge processing | Available | Workers safely extract supported files, normalize text, create deterministic chunks, and persist traceable output for later embedding. |
 | Vector indexing | Available | Workers queue and process OpenAI embeddings into validated Qdrant collections with traceable PostgreSQL records, cleanup, and safe progress visibility. |
 | Semantic retrieval | Available | Bounded metadata-filtered search validates Qdrant candidates against current PostgreSQL documents, chunks, and embedding records. |
-| RAG chat | In progress | Protected RAG chat streams grounded answers and citations, with bounded client-supplied history; final verification remains. |
+| RAG chat | Available | RBAC-protected RAG chat streams grounded answers and verified citations, with bounded client-supplied history. |
 
 Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; Phase 9.6 automatically indexes document vectors after extraction when `OPENAI_API_KEY` is configured.
 
@@ -45,7 +45,8 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 8 — Text extraction and chunking | Complete | Safe TXT/Markdown/PDF/DOCX extraction, normalized traceable chunks, worker lifecycle, reprocessing, and RBAC-protected inspection APIs. |
 | Phase 9 — Embeddings and Qdrant indexing | Complete | OpenAI embedding boundary, Qdrant collection safety, durable indexing and cleanup jobs, traceable vector records, and safe status visibility. |
 | Phase 10 — Retrieval and metadata filtering | Complete | Query embedding, safe Qdrant search, controlled filters, PostgreSQL authority checks, deterministic ranking, and RBAC-protected search API. |
-| Phases 11–12 — RAG and permission-aware retrieval | Planned | Streaming answers with citations and resource/tenant-aware result authorization. |
+| Phase 11 — RAG chat, streaming, and citations | Complete | RBAC-protected streaming answers, bounded untrusted client history, verified citations, safe failures, and no persisted transcript. |
+| Phase 12 — Permission-aware retrieval | Planned | Resource- and tenant-aware result authorization. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
 
@@ -57,7 +58,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Text extraction and chunking design](docs/text-extraction-and-chunking.md) defines the implemented Phase 8 format, lifecycle, traceability, safety, and manual-verification contract.
 - [Embeddings and Qdrant indexing design](docs/embeddings-and-qdrant-indexing.md) defines the Phase 9 vector, lifecycle, idempotency, and safety contract.
 - [Retrieval and metadata filtering design](docs/retrieval-and-metadata-filtering.md) defines the implemented Phase 10 search contract, authority checks, API, and verification workflow.
-- [RAG chat and citations design](docs/rag-chat-and-citations.md) defines the in-progress Phase 11 grounding, streaming, and citation contract.
+- [RAG chat and citations design](docs/rag-chat-and-citations.md) defines the implemented Phase 11 grounding, streaming, citation, and verification contract.
 
 ## Architecture
 
@@ -100,9 +101,10 @@ Documents ──► PostgreSQL outbox ──► Redis ──► Celery workers
 
                                   Available now
 
-                     embeddings ──► Qdrant ──► semantic retrieval
-                                                       │
-                                  Planned next ◄────────┴──── RAG chat + citations
+                     embeddings ──► Qdrant ──► semantic retrieval ──► RAG chat + citations
+                                                                    │
+                                                                    ▼
+                                                          streamed SSE response
 ```
 
 The backend follows a layered design so that HTTP, business rules, and persistence remain independently testable:
@@ -288,6 +290,7 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | `POST` | `/documents/{document_id}/processing-jobs/{job_id}/retry` | Requeue one failed job with `documents:write`. |
 | `GET` | `/documents/{document_id}/indexing-status` | Inspect current vector progress and safe indexing state with `documents:read`. |
 | `POST` | `/retrieval/search` | Perform bounded semantic search with metadata filters and `documents:read`. |
+| `POST` | `/chat/stream` | Stream a grounded answer and verified citations with `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction` | Inspect safe extraction metadata with `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction/chunks` | Inspect ordered, paginated chunks with `documents:read`. |
 | `POST` | `/documents/{document_id}/reprocess` | Queue replacement extraction with `documents:write`; returns `202 Accepted`. |
@@ -373,6 +376,29 @@ locations, document metadata, and similarity scores. Phase 12 will add
 document-level and tenant-aware authorization; the current endpoint applies
 global RBAC only.
 
+### Grounded RAG chat
+
+After at least one relevant document is indexed, use a POST-capable streaming
+client (not browser `EventSource`) to request a grounded answer:
+
+```bash
+curl --no-buffer -N -X POST http://localhost:8000/chat/stream \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"How are refresh tokens rotated?","retrieval_limit":5}'
+```
+
+The SSE response contains `answer_delta` fragments and, for a grounded answer,
+terminal `citations` then `done` events. The citations are generated from the
+current PostgreSQL-verified retrieval results; model labels alone never create
+them. If no verified context is available, `done` reports `answered: false` and
+the server does not call the chat model. The route requires `documents:read`.
+
+Optional `history` is stateless, bounded to ten alternating complete prior
+messages, and treated as untrusted transcript data. It is not stored by AegisAI
+or used as evidence. See the [RAG chat design](docs/rag-chat-and-citations.md)
+for the event and safety contract.
+
 ### Browser SSO and Swagger
 
 Start browser SSO by visiting, for example:
@@ -431,7 +457,7 @@ cd backend
 venv/bin/python -m unittest discover -s tests -v
 ```
 
-The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, document cleanup, background-job state, extraction, chunking, reprocessing, embedding validation and idempotency, Qdrant collection safety, Swagger security schemes, migrations, and application startup.
+The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, document cleanup, background-job state, extraction, chunking, reprocessing, embedding validation and idempotency, Qdrant collection safety, retrieval, grounded chat and SSE behavior, Swagger security schemes, migrations, and application startup.
 
 The Dockerfile runs this suite during image build and produces the complete Alembic upgrade SQL. Compose runs the suite again before applying migrations and launching the API.
 
@@ -487,14 +513,12 @@ When running Alembic from the host, use a database URL reachable from the host�
 
 The next implementation milestones are:
 
-1. **Phase 10:** retrieval and metadata filtering.
-2. **Phase 11:** RAG chat, streaming, and citations.
-3. **Phase 12:** permission-aware retrieval.
-4. **Phase 13:** audit logging.
-5. **Phase 14:** administration dashboard.
-6. **Phase 15:** Next.js frontend.
-7. **Phase 16:** observability.
-8. **Phase 17:** CI/CD.
-9. **Phase 18:** Kubernetes.
-10. **Phase 19:** multi-tenancy.
-11. **Phase 20:** enterprise API keys, rate limits, and retention policies.
+1. **Phase 12:** permission-aware retrieval.
+2. **Phase 13:** audit logging.
+3. **Phase 14:** administration dashboard.
+4. **Phase 15:** Next.js frontend.
+5. **Phase 16:** observability.
+6. **Phase 17:** CI/CD.
+7. **Phase 18:** Kubernetes.
+8. **Phase 19:** multi-tenancy.
+9. **Phase 20:** enterprise API keys, rate limits, and retention policies.
