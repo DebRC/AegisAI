@@ -2,6 +2,9 @@ from fastapi import Depends
 
 from sqlalchemy.orm import Session
 
+from app.chat.citations import CitationValidator
+from app.chat.factory import create_chat_model_provider
+from app.chat.prompting import GroundedPromptBuilder
 from app.core.config import settings
 from app.db.database import get_db
 from app.embeddings.factory import create_embedding_provider
@@ -18,6 +21,7 @@ from app.services.query_embedding_service import QueryEmbeddingService
 from app.services.rbac_service import RbacService
 from app.services.retrieval_authority_service import RetrievalAuthorityService
 from app.services.retrieval_service import RetrievalService
+from app.services.rag_chat_service import RagChatService
 from app.services.sso_account_service import SsoAccountService
 from app.storage.documents import DocumentStorage
 from app.storage.documents import LocalDocumentStorage
@@ -88,6 +92,18 @@ def get_retrieval_service(
         return QdrantVectorStore(create_qdrant_client(settings), settings)
 
     return RetrievalService(query_embeddings, authority, create_vector_store)
+
+
+def get_rag_chat_service(
+    retrieval: RetrievalService = Depends(get_retrieval_service),
+) -> RagChatService:
+    """Build one request-scoped RAG service and its closable chat provider."""
+    return RagChatService(
+        retrieval=retrieval,
+        prompt_builder=GroundedPromptBuilder(settings.CHAT_MAX_CONTEXT_CHARACTERS),
+        chat_provider=create_chat_model_provider(settings),
+        citation_validator=CitationValidator(),
+    )
 
 
 def get_sso_account_service(

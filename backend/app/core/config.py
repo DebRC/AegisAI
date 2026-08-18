@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     EMBEDDING_VECTOR_DIMENSION: int = Field(default=1_536, ge=1, le=65_536)
     EMBEDDING_BATCH_SIZE: int = Field(default=64, ge=1, le=1_000)
     EMBEDDING_REQUEST_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0, le=120)
+    # Chat generation is configured independently from embeddings so a model
+    # or timeout change cannot alter the already-indexed vector shape.
+    CHAT_PROVIDER: Literal["openai"] = "openai"
+    CHAT_MODEL: str = Field(default="gpt-5.6", min_length=1, max_length=255)
+    CHAT_REQUEST_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0, le=300)
+    CHAT_MAX_OUTPUT_TOKENS: int = Field(default=1_024, ge=1, le=16_384)
+    CHAT_MAX_CONTEXT_CHARACTERS: int = Field(default=24_000, ge=1_000, le=500_000)
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_API_KEY: SecretStr | None = None
 
@@ -99,7 +106,7 @@ class Settings(BaseSettings):
     @field_validator("OPENAI_BASE_URL")
     @classmethod
     def validate_openai_base_url(cls, value: str) -> str:
-        """Accept only complete HTTP(S) endpoints for the embedding provider."""
+        """Accept only complete HTTP(S) endpoints for OpenAI-backed providers."""
         parsed = urlsplit(value)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("OPENAI_BASE_URL must be an absolute HTTP(S) URL")
