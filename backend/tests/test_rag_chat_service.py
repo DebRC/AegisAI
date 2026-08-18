@@ -71,6 +71,10 @@ class RagChatServiceTests(unittest.TestCase):
                     retrieval_limit=4,
                     document_ids=[3],
                     content_types=["text/markdown"],
+                    history=[
+                        {"role": "user", "content": "Tell me about the guide."},
+                        {"role": "assistant", "content": "It covers AegisAI."},
+                    ],
                 )
             )
         )
@@ -84,6 +88,7 @@ class RagChatServiceTests(unittest.TestCase):
         self.assertEqual(retrieval.requests[0].limit, 4)
         self.assertEqual(retrieval.requests[0].document_ids, [3])
         self.assertEqual(provider.messages[0][0].role, "developer")
+        self.assertIn("untrusted_conversation_history_json", provider.messages[0][1].content)
 
     def test_returns_an_insufficient_context_completion_without_calling_the_model(self) -> None:
         service, retrieval, provider = self._service([], ("should not be used",))

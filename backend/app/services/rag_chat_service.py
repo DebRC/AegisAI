@@ -72,7 +72,7 @@ class RagChatService:
             return
 
         try:
-            prompt = self.prompt_builder.build(request.question, retrieval_response.items)
+            prompt = self.prompt_builder.build(request.question, retrieval_response.items, request.history)
         except PromptContextError as error:
             raise RagChatServiceError("Verified retrieval context could not form a chat prompt") from error
 

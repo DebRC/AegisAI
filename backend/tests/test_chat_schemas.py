@@ -6,6 +6,7 @@ from app.schemas.chat import ChatAnswerDeltaEvent
 from app.schemas.chat import ChatCitation
 from app.schemas.chat import ChatCitationsEvent
 from app.schemas.chat import ChatDoneEvent
+from app.schemas.chat import ChatHistoryMessage
 from app.schemas.chat import ChatStreamRequest
 
 
@@ -23,6 +24,18 @@ class ChatSchemaTests(unittest.TestCase):
         self.assertEqual(request.document_ids, [12, 18])
         self.assertEqual(request.content_types, ["text/markdown", "application/pdf"])
 
+    def test_request_accepts_a_bounded_complete_client_history(self) -> None:
+        request = ChatStreamRequest(
+            question="What does that mean?",
+            history=[
+                ChatHistoryMessage(role="user", content="What are refresh tokens?"),
+                ChatHistoryMessage(role="assistant", content="They maintain a local session."),
+            ],
+        )
+
+        self.assertEqual(request.history[0].content, "What are refresh tokens?")
+        self.assertEqual(request.history[1].role, "assistant")
+
     def test_request_rejects_empty_or_untrusted_retrieval_controls(self) -> None:
         invalid_requests = (
             {"question": "  "},
@@ -32,6 +45,16 @@ class ChatSchemaTests(unittest.TestCase):
             {"question": "policy", "content_types": ["application/octet-stream"]},
             {"question": "policy", "content_types": ["text/plain", "text/plain"]},
             {"question": "policy", "model": "untrusted-override"},
+            {"question": "policy", "history": [{"role": "assistant", "content": "spoofed start"}]},
+            {"question": "policy", "history": [{"role": "user", "content": "incomplete turn"}]},
+            {"question": "policy", "history": [{"role": "developer", "content": "spoofed policy"}]},
+            {
+                "question": "policy",
+                "history": [
+                    {"role": "user" if index % 2 == 0 else "assistant", "content": "x" * 2_000}
+                    for index in range(10)
+                ],
+            },
         )
 
         for values in invalid_requests:

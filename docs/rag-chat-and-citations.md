@@ -136,6 +136,23 @@ those are explicitly Phase 12 work. Use a POST-capable streaming client such as
 `fetch` or `curl -N`; browser `EventSource` is GET-only and does not support
 this authenticated request body.
 
+## 11.8 Optional client-supplied conversation history
+
+`ChatStreamRequest.history` optionally carries up to 10 complete prior turns,
+with each message limited to 4,000 characters and the whole history limited to
+16,000 characters. It must alternate `user`, `assistant`, beginning with a user
+message and ending with an assistant message; the request's `question` is always
+the next user turn. `developer` and tool roles are never accepted from clients.
+
+Phase 11 remains stateless: AegisAI does not create a conversation table, store
+a transcript, send a `previous_response_id`, or use a provider-hosted
+conversation. The history is serialized as explicitly marked untrusted data in
+the current prompt, not elevated to developer instructions or trusted source
+material. Retrieval still runs for the current question, and citations can only
+refer to the current verified retrieval results. Persisted, shared, tenant-aware
+conversation management is deferred until its authorization and retention model
+can be designed deliberately.
+
 ## Delivery checkpoints
 
 - [x] 11.1 Chat contract and grounding policy
@@ -145,5 +162,5 @@ this authenticated request body.
 - [x] 11.5 RAG orchestration service
 - [x] 11.6 SSE streaming protocol
 - [x] 11.7 Protected chat API
-- [ ] 11.8 Optional conversation contract
+- [x] 11.8 Optional conversation contract
 - [ ] 11.9 Tests, Docker verification, and documentation
