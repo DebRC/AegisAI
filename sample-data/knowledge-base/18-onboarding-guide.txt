@@ -1,0 +1,13 @@
+New engineer onboarding
+
+Start the local platform from the repository root with `docker compose up
+--build --force-recreate`. The command builds the backend, runs unit tests,
+applies migrations, and starts FastAPI, PostgreSQL, Redis, Celery, and Qdrant.
+
+Create a local user, bootstrap an administrator after the user exists, and use
+Swagger or curl with the returned access token. Upload a small Markdown file,
+wait for extraction and indexing, then run semantic retrieval and RAG chat.
+
+Keep backend commands in the backend directory when running the local virtual
+environment. Compose service names are usable inside containers; host commands
+normally use localhost instead of the Docker hostname `postgres`.

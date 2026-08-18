@@ -1,0 +1,13 @@
+Security monitoring expectations
+
+Monitor failed logins, refresh-token reuse, privilege changes, document deletion,
+and abnormal background-job failure rates. Correlate events by local user,
+document, job, and request identifiers without recording access tokens or
+provider credentials.
+
+An unexpected refresh-token reuse can indicate token theft because refresh
+rotation revokes the prior token. Investigate the user session, revoke relevant
+refresh tokens, and rotate any exposed credentials.
+
+Future audit logging will provide durable review records for authentication,
+role changes, document access, and administrative actions.

@@ -1,0 +1,13 @@
+Incident communications
+
+The incident commander owns external status updates. State the observed impact,
+the current mitigation, the next update time, and what is still unknown. Avoid
+guessing at root cause before evidence is reviewed.
+
+For a Severity 1 event, post an initial stakeholder update within fifteen
+minutes and update at least every thirty minutes until the service is stable.
+For Severity 2, provide an initial update within thirty minutes and a revised
+cadence suitable for the impact.
+
+After recovery, preserve logs and the timeline, then schedule a blameless review
+with corrective actions and named owners.

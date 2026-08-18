@@ -1,0 +1,13 @@
+Document sharing roadmap
+
+Global `documents:read` is sufficient for the early local platform but not for a
+shared enterprise knowledge base. The next authorization phase introduces an
+explicit document-access policy and durable access grants.
+
+Retrieval and RAG must enforce the same rule. Qdrant can propose similar chunks,
+but PostgreSQL will decide whether the requesting user may receive each document
+and whether a citation may name it. Revoking a grant must affect later searches
+and chat turns without waiting for vectors to be rebuilt.
+
+Tenant isolation, organization roles, and broad enterprise governance follow in
+later phases after document-level behavior is proven and tested.

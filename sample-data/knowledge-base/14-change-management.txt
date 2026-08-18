@@ -1,0 +1,13 @@
+Change management checklist
+
+Before a production change, record the owner, purpose, risk, rollback plan,
+validation command, and stakeholder notification plan. Changes affecting schema
+or access control require peer review and a tested migration path.
+
+For AegisAI, run the unit suite and the Docker Compose startup path. The startup
+path builds the image, runs tests, validates Alembic SQL, applies migrations to
+PostgreSQL, and starts the API only when those checks pass.
+
+After deployment, verify health, one authorized API request, and relevant worker
+logs. Roll back safely if validation fails rather than applying unreviewed
+manual database edits.

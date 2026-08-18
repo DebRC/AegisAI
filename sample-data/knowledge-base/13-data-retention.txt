@@ -1,0 +1,13 @@
+Data retention standard
+
+Keep active customer knowledge documents only for the approved business purpose.
+When the purpose ends, delete the document through the application lifecycle so
+metadata is hidden, background work is cancelled, and derived vectors can be
+cleaned up.
+
+Application audit records are retained for twelve months unless a legal hold or
+approved exception applies. Security incident evidence is retained until the
+incident review and all corrective actions are complete.
+
+Do not use a retention rule to preserve authentication tokens, provider secrets,
+or raw passwords. Those values must never be stored in ordinary documents.

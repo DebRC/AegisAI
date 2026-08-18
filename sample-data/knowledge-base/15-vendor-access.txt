@@ -1,0 +1,12 @@
+Third-party vendor access
+
+Give vendors the least access needed for a time-bound support task. A vendor
+account must be named, individually attributable, and approved by the service
+owner. Shared administrative accounts are prohibited.
+
+Before granting access, confirm the business purpose, scope, expiry, and audit
+trail. Revoke access at the end of the task and immediately if the vendor
+relationship changes or suspicious activity is observed.
+
+Vendor access does not replace AegisAI local authorization. External identity
+claims alone never grant a local role or `documents:read` permission.

@@ -1,0 +1,13 @@
+Business continuity notes
+
+The service depends on PostgreSQL for authoritative metadata and access state,
+Redis for background-task transport, Qdrant for derived vectors, and document
+storage for original bytes. A temporary Qdrant outage prevents semantic search
+but must not cause PostgreSQL records to be treated as invalid.
+
+Restore in order: database integrity and migrations, original document storage,
+worker connectivity, then vector-index health. Rebuild derived vectors through
+the controlled indexing workflow when necessary; never fabricate embeddings or
+mark indexing succeeded without traceable records.
+
+Exercise recovery procedures regularly and record evidence of the restore test.

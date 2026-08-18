@@ -1,0 +1,61 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 793 >>
+stream
+BT
+/F1 12 Tf
+72 740 Td
+(Release readiness checklist) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(Before release, confirm code review, unit tests, Docker image build, static Alembic) Tj
+0 -16 Td
+(upgrade SQL, and the complete Compose startup path. A failed migration or test blocks) Tj
+0 -16 Td
+(release.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(For changes to retrieval or chat, run a controlled query against indexed synthetic) Tj
+0 -16 Td
+(documents. Verify that citations name only retrieved sources and that an) Tj
+0 -16 Td
+(insufficient-context question makes no model request.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(After release, check health, one authorized API call, worker readiness, migration head,) Tj
+0 -16 Td
+(and error logs. Keep a tested rollback plan for every schema or authorization change.) Tj
+0 -16 Td
+() Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000001091 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1161
+%%EOF

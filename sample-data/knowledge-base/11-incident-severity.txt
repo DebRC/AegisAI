@@ -1,0 +1,13 @@
+Incident severity guide
+
+Severity 1 means confirmed loss of confidentiality, integrity, or availability
+that materially affects many users or a critical service. Page the incident
+commander immediately, create a dedicated incident channel, and start a
+time-stamped timeline.
+
+Severity 2 means a significant degradation with a workaround or limited blast
+radius. Assign an incident lead, communicate an initial assessment within thirty
+minutes, and reassess severity as evidence changes.
+
+Severity 3 means a contained defect or operational issue with no material user
+impact. Record the issue, assign an owner, and schedule normal remediation.

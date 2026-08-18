@@ -1,0 +1,63 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 859 >>
+stream
+BT
+/F1 12 Tf
+72 740 Td
+(Service level objectives) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(The API availability objective is 99.9 percent per calendar month, excluding approved) Tj
+0 -16 Td
+(maintenance. The primary health indicator is successful authenticated API requests, not) Tj
+0 -16 Td
+(merely an open TCP port.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(Background processing has a target of ninety-five percent of queued document jobs) Tj
+0 -16 Td
+(starting within five minutes. Monitor outbox delay, Celery failures, and repeated) Tj
+0 -16 Td
+(retries separately from document upload success.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(Semantic retrieval quality is monitored through controlled evaluation queries and) Tj
+0 -16 Td
+(cited-answer review. A Qdrant outage degrades search but does not change PostgreSQL) Tj
+0 -16 Td
+(authoritative access or document state.) Tj
+0 -16 Td
+() Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000001157 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1227
+%%EOF

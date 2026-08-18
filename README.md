@@ -371,6 +371,34 @@ locations, document metadata, and similarity scores. Phase 12 will add
 document-level and tenant-aware authorization; the current endpoint applies
 global RBAC only.
 
+For a safe manual end-to-end dataset, use the 30 fictional files in
+[sample-data/knowledge-base](sample-data/knowledge-base/README.md). They include
+overlapping topics that make ingestion, retrieval, citations, and later
+document-level authorization easy to verify without real internal data.
+
+### Grounded RAG chat
+
+After at least one relevant document is indexed, use a POST-capable streaming
+client (not browser `EventSource`) to request a grounded answer:
+
+```bash
+curl --no-buffer -N -X POST http://localhost:8000/chat/stream \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"How are refresh tokens rotated?","retrieval_limit":5}'
+```
+
+The SSE response contains `answer_delta` fragments and, for a grounded answer,
+terminal `citations` then `done` events. The citations are generated from the
+current PostgreSQL-verified retrieval results; model labels alone never create
+them. If no verified context is available, `done` reports `answered: false` and
+the server does not call the chat model. The route requires `documents:read`.
+
+Optional `history` is stateless, bounded to ten alternating complete prior
+messages, and treated as untrusted transcript data. It is not stored by AegisAI
+or used as evidence. See the [RAG chat design](docs/rag-chat-and-citations.md)
+for the event and safety contract.
+
 ### Browser SSO and Swagger
 
 Start browser SSO by visiting, for example:

@@ -1,0 +1,12 @@
+Vector cleanup workflow
+
+Deleting or replacing document output can leave derived Qdrant points that no
+longer represent current PostgreSQL chunks. A durable vector-cleanup request
+records the work so failures are visible and retryable.
+
+The cleanup worker removes only points identified by the application-owned
+embedding records and then marks the request complete. It does not delete an
+entire collection merely because an embedding model or vector dimension changed.
+
+Retrieval independently protects users by treating Qdrant as a candidate source
+and discarding stale or deleted candidates after PostgreSQL authority checks.
