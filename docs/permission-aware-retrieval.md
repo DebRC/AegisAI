@@ -117,4 +117,4 @@ Phase 12 grants access directly to local users only. It does not:
 - [x] 12.5 Retrieval authority enforcement
 - [x] 12.6 RAG and citation enforcement
 - [x] 12.7 Sharing-management API and RBAC
-- [ ] 12.8 Tests, Docker verification, and documentation
+- [x] 12.8 Tests, Docker verification, and documentation
