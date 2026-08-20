@@ -10,6 +10,7 @@ try:
     from app.api.sso import router as sso_router
     from app.api.rbac import router as rbac_router
     from app.api.documents import router as documents_router
+    from app.api.document_access_grants import router as document_access_grants_router
     from app.api.retrieval import router as retrieval_router
     from app.api.chat import router as chat_router
     from app.core.config import settings
@@ -24,6 +25,7 @@ except ModuleNotFoundError as exc:
     from app.api.sso import router as sso_router
     from app.api.rbac import router as rbac_router
     from app.api.documents import router as documents_router
+    from app.api.document_access_grants import router as document_access_grants_router
     from app.api.retrieval import router as retrieval_router
     from app.api.chat import router as chat_router
     from core.config import settings
@@ -48,6 +50,7 @@ app.include_router(auth_router)
 app.include_router(sso_router)
 app.include_router(rbac_router)
 app.include_router(documents_router)
+app.include_router(document_access_grants_router)
 app.include_router(retrieval_router)
 app.include_router(chat_router)
 

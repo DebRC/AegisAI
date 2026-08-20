@@ -6,6 +6,7 @@ from pydantic import ConfigDict
 from pydantic import Field
 
 from app.models.document import DocumentStatus
+from app.models.document_access_grant import DocumentAccessLevel
 from app.models.processing_job import ProcessingJobStatus
 
 
@@ -37,6 +38,23 @@ class DocumentRenameRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
 
     model_config = ConfigDict(str_strip_whitespace=True)
+
+
+class DocumentAccessGrantRequest(BaseModel):
+    """The only mutable part of a direct document-access grant."""
+
+    access_level: DocumentAccessLevel
+
+
+class DocumentAccessGrantResponse(BaseModel):
+    """A direct user grant; owner access remains implicit and is not listed."""
+
+    document_id: int
+    user_id: int
+    access_level: DocumentAccessLevel
+    granted_by_user_id: int
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentExtractionResponse(BaseModel):

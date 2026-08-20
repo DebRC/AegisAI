@@ -14,6 +14,7 @@ from app.api import auth as auth_api
 from app.api import chat as chat_api
 from app.api import database as database_api
 from app.api import document_access as document_access_api
+from app.api import document_access_grants as document_access_grants_api
 from app.api import documents as documents_api
 from app.api import health as health_api
 from app.api import protected as protected_api
@@ -21,6 +22,7 @@ from app.api import rbac as rbac_api
 from app.api import retrieval as retrieval_api
 from app.api.dependencies import get_auth_service
 from app.api.dependencies import get_document_access_policy_service
+from app.api.dependencies import get_document_access_grant_service
 from app.api.dependencies import get_document_service
 from app.api.dependencies import get_document_extraction_query_service
 from app.api.dependencies import get_rbac_service
@@ -31,6 +33,7 @@ from app.api.dependencies import get_rag_chat_service
 from app.api.dependencies import get_sso_account_service
 from app.core.exceptions import AuthenticationError
 from app.core.exceptions import DocumentNotFoundError
+from app.core.exceptions import DocumentAccessOwnerGrantError
 from app.core.exceptions import DocumentExtractionNotFoundError
 from app.core.exceptions import DocumentPersistenceError
 from app.core.exceptions import DocumentValidationError
@@ -51,6 +54,7 @@ from app.security.permissions import PermissionCode
 from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
 from app.services.document_access_policy_service import DocumentAccessPolicyService
+from app.services.document_access_grant_service import DocumentAccessGrantService
 from app.services.document_extraction_query_service import DocumentExtractionQueryService
 from app.services.rbac_service import RbacService
 from app.services.query_embedding_service import QueryEmbeddingError
@@ -87,6 +91,10 @@ class ApplicationTests(unittest.TestCase):
         self.assertIsInstance(
             get_document_access_policy_service(session),
             DocumentAccessPolicyService,
+        )
+        self.assertIsInstance(
+            get_document_access_grant_service(session),
+            DocumentAccessGrantService,
         )
         self.assertIsInstance(
             get_document_extraction_query_service(session),
@@ -252,6 +260,59 @@ class ApplicationTests(unittest.TestCase):
             document_access_api.require_document_write_access(3, user, policy)
         self.assertEqual(context.exception.status_code, 404)
         self.assertEqual(context.exception.detail, "Document not found")
+
+    def test_document_access_grant_routes_require_write_and_translate_errors(self) -> None:
+        from app.schemas.document import DocumentAccessGrantRequest
+        from app.models.document_access_grant import DocumentAccessLevel
+
+        for path in (
+            "/documents/{document_id}/access",
+            "/documents/{document_id}/access/{user_id}",
+        ):
+            routes = [route for route in document_access_grants_api.router.routes if route.path == path]
+            self.assertTrue(routes)
+            self.assertTrue(all(self._route_permission(route) == PermissionCode.DOCUMENTS_WRITE for route in routes))
+
+        service = Mock()
+        user = SimpleNamespace(id=7)
+        grant = SimpleNamespace(
+            document_id=3,
+            user_id=8,
+            access_level=DocumentAccessLevel.READ,
+            granted_by_user_id=7,
+        )
+        service.list_grants.return_value = [grant]
+        service.upsert_grant.return_value = grant
+
+        self.assertEqual(
+            document_access_grants_api.list_document_access_grants(3, user, service),
+            [grant],
+        )
+        request = DocumentAccessGrantRequest(access_level=DocumentAccessLevel.READ)
+        self.assertEqual(
+            document_access_grants_api.upsert_document_access_grant(3, 8, request, user, service),
+            grant,
+        )
+        service.upsert_grant.assert_called_once_with(
+            actor_user_id=7,
+            document_id=3,
+            grantee_user_id=8,
+            access_level=DocumentAccessLevel.READ,
+        )
+        self.assertEqual(
+            document_access_grants_api.revoke_document_access_grant(3, 8, user, service).status_code,
+            204,
+        )
+        service.revoke_grant.assert_called_once_with(
+            actor_user_id=7,
+            document_id=3,
+            grantee_user_id=8,
+        )
+
+        service.upsert_grant.side_effect = DocumentAccessOwnerGrantError()
+        with self.assertRaises(HTTPException) as context:
+            document_access_grants_api.upsert_document_access_grant(3, 7, request, user, service)
+        self.assertEqual(context.exception.status_code, 422)
 
     @staticmethod
     def _route_permission(route) -> PermissionCode:

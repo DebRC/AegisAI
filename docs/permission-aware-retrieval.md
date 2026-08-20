@@ -65,6 +65,19 @@ stored because owner access is implicit; a grant to the owner is rejected.
 Deleted documents cannot be shared. Inactive users cannot receive or exercise
 access.
 
+### Sharing API
+
+Users who have both `documents:write` and document-level write access can use:
+
+- `GET /documents/{document_id}/access` to list direct grants;
+- `PUT /documents/{document_id}/access/{user_id}` with `{"access_level":"read"}`
+  or `{"access_level":"write"}` to create or replace one grant; and
+- `DELETE /documents/{document_id}/access/{user_id}` to revoke it.
+
+The owner is not returned as a grant and cannot be granted access explicitly:
+ownership remains implicit. Unauthorized document IDs remain indistinguishable
+from nonexistent ones (`404`).
+
 ### Visibility and non-disclosure
 
 Global capability failures remain `403 Forbidden`. Once a user has the global
@@ -103,5 +116,5 @@ Phase 12 grants access directly to local users only. It does not:
 - [x] 12.4 Document API resource enforcement
 - [x] 12.5 Retrieval authority enforcement
 - [x] 12.6 RAG and citation enforcement
-- [ ] 12.7 Sharing-management API and RBAC
+- [x] 12.7 Sharing-management API and RBAC
 - [ ] 12.8 Tests, Docker verification, and documentation
