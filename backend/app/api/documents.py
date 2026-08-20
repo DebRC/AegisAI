@@ -139,8 +139,8 @@ def list_documents(
     )
     return DocumentListResponse(
         items=page.items,
-        offset=page.offset,
-        limit=page.limit,
+        offset=offset,
+        limit=limit,
         total=page.total,
     )
 

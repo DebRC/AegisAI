@@ -432,8 +432,6 @@ class ApplicationTests(unittest.TestCase):
         service.upload.return_value = document
         policy.list_readable_documents.return_value = SimpleNamespace(
             items=[document],
-            offset=0,
-            limit=25,
             total=1,
         )
         service.get_document.return_value = document
@@ -451,7 +449,14 @@ class ApplicationTests(unittest.TestCase):
         page = documents_api.list_documents(0, 25, user, policy)
         self.assertEqual([item.id for item in page.items], [document.id])
         self.assertEqual(page.items[0].title, document.title)
+        self.assertEqual(page.offset, 0)
+        self.assertEqual(page.limit, 25)
         self.assertEqual(page.total, 1)
+        policy.list_readable_documents.assert_called_once_with(
+            user_id=user.id,
+            offset=0,
+            limit=25,
+        )
         self.assertIs(documents_api.get_document(3, service, user), document)
         self.assertIs(
             documents_api.rename_document(
