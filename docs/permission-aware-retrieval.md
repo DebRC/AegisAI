@@ -92,7 +92,7 @@ Phase 12 grants access directly to local users only. It does not:
 ## Delivery checkpoints
 
 - [x] 12.1 Access contract and policy
-- [ ] 12.2 Document-access models and Alembic migration
+- [x] 12.2 Document-access models and Alembic migration
 - [ ] 12.3 Repository and policy service
 - [ ] 12.4 Document API resource enforcement
 - [ ] 12.5 Retrieval authority enforcement

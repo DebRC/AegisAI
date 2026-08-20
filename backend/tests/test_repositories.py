@@ -148,7 +148,10 @@ class RepositoryTests(DatabaseTestCase, unittest.TestCase):
 
         self.assertEqual(repository.get_by_id(permission_id).code, "roles:read")
         self.assertEqual(repository.get_by_code("roles:read").id, permission_id)
-        self.assertEqual(repository.list()[0].code, "documents:read")
+        permission_codes = [permission.code for permission in repository.list()]
+        self.assertEqual(permission_codes, sorted(permission_codes))
+        self.assertIn("documents:read", permission_codes)
+        self.assertIn("documents:manage", permission_codes)
         self.assertTrue(repository.user_has_permission(self.user.id, "roles:read"))
         self.assertFalse(repository.user_has_permission(self.user.id, "roles:manage"))
 
