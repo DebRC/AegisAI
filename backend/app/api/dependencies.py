@@ -14,6 +14,7 @@ from app.integrations.sso.factory import SsoProviderFactory
 from app.security.sso_transactions import SsoTransactionManager
 from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
+from app.services.document_access_policy_service import DocumentAccessPolicyService
 from app.services.document_extraction_query_service import DocumentExtractionQueryService
 from app.services.document_embedding_status_service import DocumentEmbeddingStatusService
 from app.services.processing_job_service import ProcessingJobService
@@ -51,6 +52,12 @@ def get_document_service(
     storage: DocumentStorage = Depends(get_document_storage),
 ) -> DocumentService:
     return DocumentService(db, storage)
+
+
+def get_document_access_policy_service(
+    db: Session = Depends(get_db),
+) -> DocumentAccessPolicyService:
+    return DocumentAccessPolicyService(db)
 
 
 def get_document_extraction_query_service(

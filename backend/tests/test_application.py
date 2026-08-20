@@ -13,12 +13,14 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.api import auth as auth_api
 from app.api import chat as chat_api
 from app.api import database as database_api
+from app.api import document_access as document_access_api
 from app.api import documents as documents_api
 from app.api import health as health_api
 from app.api import protected as protected_api
 from app.api import rbac as rbac_api
 from app.api import retrieval as retrieval_api
 from app.api.dependencies import get_auth_service
+from app.api.dependencies import get_document_access_policy_service
 from app.api.dependencies import get_document_service
 from app.api.dependencies import get_document_extraction_query_service
 from app.api.dependencies import get_rbac_service
@@ -48,6 +50,7 @@ from app.security.constants import TokenType
 from app.security.permissions import PermissionCode
 from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
+from app.services.document_access_policy_service import DocumentAccessPolicyService
 from app.services.document_extraction_query_service import DocumentExtractionQueryService
 from app.services.rbac_service import RbacService
 from app.services.query_embedding_service import QueryEmbeddingError
@@ -80,6 +83,10 @@ class ApplicationTests(unittest.TestCase):
         self.assertIsInstance(
             get_document_service(session, Mock()),
             DocumentService,
+        )
+        self.assertIsInstance(
+            get_document_access_policy_service(session),
+            DocumentAccessPolicyService,
         )
         self.assertIsInstance(
             get_document_extraction_query_service(session),
@@ -226,17 +233,38 @@ class ApplicationTests(unittest.TestCase):
 
         self.assertEqual(actual_permissions, expected_permissions)
 
+    def test_document_access_dependency_hides_denied_resources(self) -> None:
+        user = SimpleNamespace(id=7)
+        policy = Mock()
+
+        policy.can_read.return_value = True
+        self.assertIs(document_access_api.require_document_read_access(3, user, policy), user)
+        policy.can_read.assert_called_once_with(user_id=user.id, document_id=3)
+
+        policy.can_write.return_value = False
+        with self.assertRaises(HTTPException) as context:
+            document_access_api.require_document_write_access(3, user, policy)
+        self.assertEqual(context.exception.status_code, 404)
+        self.assertEqual(context.exception.detail, "Document not found")
+
     @staticmethod
     def _route_permission(route) -> PermissionCode:
-        permissions = [
-            cell.cell_contents
-            for dependency in route.dependant.dependencies
-            for cell in (getattr(dependency.call, "__closure__", None) or [])
-            if isinstance(cell.cell_contents, PermissionCode)
-        ]
+        def permissions_for(dependency) -> set[PermissionCode]:
+            found = {
+                cell.cell_contents
+                for cell in (getattr(dependency.call, "__closure__", None) or [])
+                if isinstance(cell.cell_contents, PermissionCode)
+            }
+            for nested_dependency in dependency.dependencies:
+                found.update(permissions_for(nested_dependency))
+            return found
+
+        permissions = set()
+        for dependency in route.dependant.dependencies:
+            permissions.update(permissions_for(dependency))
         if len(permissions) != 1:
             raise AssertionError(f"Expected one permission dependency for {route.path}")
-        return permissions[0]
+        return permissions.pop()
 
     def test_openapi_exposes_password_and_pasteable_bearer_schemes(self) -> None:
         openapi = app.openapi()
@@ -376,6 +404,7 @@ class ApplicationTests(unittest.TestCase):
     def test_document_route_handlers_and_error_translation(self) -> None:
         service = Mock()
         user = SimpleNamespace(id=7)
+        policy = Mock()
         upload = SimpleNamespace(
             filename="security-policy.txt",
             content_type="text/plain",
@@ -395,7 +424,7 @@ class ApplicationTests(unittest.TestCase):
             updated_at=now,
         )
         service.upload.return_value = document
-        service.list_documents.return_value = SimpleNamespace(
+        policy.list_readable_documents.return_value = SimpleNamespace(
             items=[document],
             offset=0,
             limit=25,
@@ -413,11 +442,11 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(upload_arguments["original_filename"], "security-policy.txt")
         self.assertEqual(upload_arguments["content_type"], "text/plain")
         self.assertEqual(list(upload_arguments["chunks"]), [b"policy"])
-        page = documents_api.list_documents(0, 25, service)
+        page = documents_api.list_documents(0, 25, user, policy)
         self.assertEqual([item.id for item in page.items], [document.id])
         self.assertEqual(page.items[0].title, document.title)
         self.assertEqual(page.total, 1)
-        self.assertIs(documents_api.get_document(3, service), document)
+        self.assertIs(documents_api.get_document(3, service, user), document)
         self.assertIs(
             documents_api.rename_document(
                 3,
@@ -436,7 +465,7 @@ class ApplicationTests(unittest.TestCase):
 
         service.get_document.side_effect = DocumentNotFoundError()
         with self.assertRaises(HTTPException) as context:
-            documents_api.get_document(3, service)
+            documents_api.get_document(3, service, user)
         self.assertEqual(context.exception.status_code, 404)
 
         self.assertEqual(
@@ -460,6 +489,7 @@ class ApplicationTests(unittest.TestCase):
 
     def test_document_extraction_route_handlers(self) -> None:
         service = Mock()
+        user = SimpleNamespace(id=7)
         now = datetime.now(timezone.utc)
         extraction = SimpleNamespace(
             id=8,
@@ -487,13 +517,13 @@ class ApplicationTests(unittest.TestCase):
         )
         service.request_reprocessing.return_value = job
 
-        self.assertIs(documents_api.get_document_extraction(3, service), extraction)
-        page = documents_api.list_document_chunks(3, 0, 25, service)
+        self.assertIs(documents_api.get_document_extraction(3, service, user), extraction)
+        page = documents_api.list_document_chunks(3, 0, 25, service, user)
         self.assertEqual([item.id for item in page.items], [chunk.id])
         self.assertEqual(page.total, 1)
-        self.assertIs(documents_api.reprocess_document(3, service, Mock()), job)
+        self.assertIs(documents_api.reprocess_document(3, service, user), job)
 
         service.get_extraction.side_effect = DocumentExtractionNotFoundError()
         with self.assertRaises(HTTPException) as context:
-            documents_api.get_document_extraction(3, service)
+            documents_api.get_document_extraction(3, service, user)
         self.assertEqual(context.exception.status_code, 404)

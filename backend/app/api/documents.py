@@ -10,6 +10,7 @@ from fastapi import UploadFile
 from fastapi import status
 
 from app.api.dependencies import get_document_service
+from app.api.dependencies import get_document_access_policy_service
 from app.api.dependencies import get_document_extraction_query_service
 from app.api.dependencies import get_document_embedding_status_service
 from app.api.dependencies import get_processing_job_service
@@ -20,6 +21,8 @@ from app.core.exceptions import DocumentValidationError
 from app.core.exceptions import ProcessingJobNotFoundError
 from app.core.exceptions import ProcessingJobPersistenceError
 from app.core.exceptions import ProcessingJobStateError
+from app.api.document_access import require_document_read_access
+from app.api.document_access import require_document_write_access
 from app.models.user import User
 from app.schemas.document import DocumentListResponse
 from app.schemas.document import DocumentChunkListResponse
@@ -34,6 +37,7 @@ from app.security.permissions import PermissionCode
 from app.services.document_service import DocumentService
 from app.services.document_extraction_query_service import DocumentExtractionQueryService
 from app.services.document_embedding_status_service import DocumentEmbeddingStatusService
+from app.services.document_access_policy_service import DocumentAccessPolicyService
 from app.services.processing_job_service import ProcessingJobService
 from app.storage.documents import DocumentStorageError
 from app.storage.documents import EmptyDocumentError
@@ -121,14 +125,18 @@ def upload_document(
 @router.get(
     "",
     response_model=DocumentListResponse,
-    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
 )
 def list_documents(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=25, ge=1, le=100),
-    service: DocumentService = Depends(get_document_service),
+    current_user: User = Depends(require_permission(PermissionCode.DOCUMENTS_READ)),
+    policy: DocumentAccessPolicyService = Depends(get_document_access_policy_service),
 ) -> DocumentListResponse:
-    page = service.list_documents(offset=offset, limit=limit)
+    page = policy.list_readable_documents(
+        user_id=current_user.id,
+        offset=offset,
+        limit=limit,
+    )
     return DocumentListResponse(
         items=page.items,
         offset=page.offset,
@@ -140,11 +148,11 @@ def list_documents(
 @router.get(
     "/{document_id}",
     response_model=DocumentResponse,
-    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
 )
 def get_document(
     document_id: int,
     service: DocumentService = Depends(get_document_service),
+    _: User = Depends(require_document_read_access),
 ) -> DocumentResponse:
     try:
         return service.get_document(document_id)
@@ -155,11 +163,11 @@ def get_document(
 @router.get(
     "/{document_id}/extraction",
     response_model=DocumentExtractionResponse,
-    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
 )
 def get_document_extraction(
     document_id: int,
     service: DocumentExtractionQueryService = Depends(get_document_extraction_query_service),
+    _: User = Depends(require_document_read_access),
 ) -> DocumentExtractionResponse:
     try:
         return service.get_extraction(document_id)
@@ -170,11 +178,11 @@ def get_document_extraction(
 @router.get(
     "/{document_id}/indexing-status",
     response_model=DocumentEmbeddingStatusResponse,
-    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
 )
 def get_document_indexing_status(
     document_id: int,
     service: DocumentEmbeddingStatusService = Depends(get_document_embedding_status_service),
+    _: User = Depends(require_document_read_access),
 ) -> DocumentEmbeddingStatusResponse:
     try:
         return service.get_status(document_id)
@@ -185,13 +193,13 @@ def get_document_indexing_status(
 @router.get(
     "/{document_id}/extraction/chunks",
     response_model=DocumentChunkListResponse,
-    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
 )
 def list_document_chunks(
     document_id: int,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=25, ge=1, le=100),
     service: DocumentExtractionQueryService = Depends(get_document_extraction_query_service),
+    _: User = Depends(require_document_read_access),
 ) -> DocumentChunkListResponse:
     try:
         page = service.list_chunks(document_id=document_id, offset=offset, limit=limit)
@@ -217,7 +225,7 @@ def list_document_chunks(
 def reprocess_document(
     document_id: int,
     service: DocumentExtractionQueryService = Depends(get_document_extraction_query_service),
-    _: User = Depends(require_permission(PermissionCode.DOCUMENTS_WRITE)),
+    _: User = Depends(require_document_write_access),
 ) -> ProcessingJobResponse:
     try:
         return service.request_reprocessing(document_id)
@@ -237,7 +245,7 @@ def rename_document(
     document_id: int,
     request: DocumentRenameRequest,
     service: DocumentService = Depends(get_document_service),
-    _: User = Depends(require_permission(PermissionCode.DOCUMENTS_WRITE)),
+    _: User = Depends(require_document_write_access),
 ) -> DocumentResponse:
     try:
         return service.rename_document(document_id, request.title)
@@ -256,7 +264,7 @@ def rename_document(
 def delete_document(
     document_id: int,
     service: DocumentService = Depends(get_document_service),
-    _: User = Depends(require_permission(PermissionCode.DOCUMENTS_WRITE)),
+    _: User = Depends(require_document_write_access),
 ) -> Response:
     try:
         service.delete_document(document_id)
@@ -269,11 +277,11 @@ def delete_document(
 @router.get(
     "/{document_id}/processing-jobs",
     response_model=ProcessingJobListResponse,
-    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
 )
 def list_processing_jobs(
     document_id: int,
     service: ProcessingJobService = Depends(get_processing_job_service),
+    _: User = Depends(require_document_read_access),
 ) -> ProcessingJobListResponse:
     try:
         return ProcessingJobListResponse(items=service.list_document_jobs(document_id))
@@ -284,12 +292,12 @@ def list_processing_jobs(
 @router.get(
     "/{document_id}/processing-jobs/{job_id}",
     response_model=ProcessingJobResponse,
-    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
 )
 def get_processing_job(
     document_id: int,
     job_id: int,
     service: ProcessingJobService = Depends(get_processing_job_service),
+    _: User = Depends(require_document_read_access),
 ) -> ProcessingJobResponse:
     try:
         return service.get_document_job(document_id=document_id, job_id=job_id)
@@ -305,7 +313,7 @@ def retry_processing_job(
     document_id: int,
     job_id: int,
     service: ProcessingJobService = Depends(get_processing_job_service),
-    _: User = Depends(require_permission(PermissionCode.DOCUMENTS_WRITE)),
+    _: User = Depends(require_document_write_access),
 ) -> ProcessingJobResponse:
     try:
         return service.retry_failed_job(document_id=document_id, job_id=job_id)

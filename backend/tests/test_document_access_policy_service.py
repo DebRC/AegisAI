@@ -97,6 +97,16 @@ class DocumentAccessPolicyServiceTests(DatabaseTestCase, unittest.TestCase):
             {self.owned_document.id, self.shared_document.id},
         )
 
+    def test_pages_only_readable_documents_with_an_authoritative_total(self) -> None:
+        page = self.service.list_readable_documents(
+            user_id=self.reader.id,
+            offset=0,
+            limit=25,
+        )
+
+        self.assertEqual(page.items, [self.shared_document])
+        self.assertEqual(page.total, 1)
+
     def test_grant_repository_reads_lists_updates_and_deletes_without_committing(self) -> None:
         repository = DocumentAccessGrantRepository(self.session)
         grant = repository.get_by_document_and_user(
