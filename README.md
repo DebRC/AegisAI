@@ -46,7 +46,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 9 — Embeddings and Qdrant indexing | Complete | OpenAI embedding boundary, Qdrant collection safety, durable indexing and cleanup jobs, traceable vector records, and safe status visibility. |
 | Phase 10 — Retrieval and metadata filtering | Complete | Query embedding, safe Qdrant search, controlled filters, PostgreSQL authority checks, deterministic ranking, and RBAC-protected search API. |
 | Phase 11 — RAG chat, streaming, and citations | Complete | RBAC-protected streaming answers, bounded untrusted client history, verified citations, safe failures, and no persisted transcript. |
-| Phase 12 — Permission-aware retrieval | Planned | Resource- and tenant-aware result authorization. |
+| Phase 12 — Permission-aware retrieval | In progress | Document-specific sharing will filter document APIs, retrieval, RAG context, and citations; tenant isolation remains Phase 19. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
 
@@ -59,6 +59,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Embeddings and Qdrant indexing design](docs/embeddings-and-qdrant-indexing.md) defines the Phase 9 vector, lifecycle, idempotency, and safety contract.
 - [Retrieval and metadata filtering design](docs/retrieval-and-metadata-filtering.md) defines the implemented Phase 10 search contract, authority checks, API, and verification workflow.
 - [RAG chat and citations design](docs/rag-chat-and-citations.md) defines the implemented Phase 11 grounding, streaming, citation, and verification contract.
+- [Permission-aware retrieval design](docs/permission-aware-retrieval.md) defines the active Phase 12 document-access policy and implementation checkpoints.
 
 ## Architecture
 
