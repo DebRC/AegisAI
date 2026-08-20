@@ -142,11 +142,15 @@ class ApplicationTests(unittest.TestCase):
         request = RetrievalSearchRequest(query="policy")
         service = Mock()
         service.search.return_value = RetrievalSearchResponse(items=[], limit=10)
-        self.assertEqual(retrieval_api.search(request, service).items, [])
+        self.assertEqual(
+            retrieval_api.search(request, SimpleNamespace(id=7), service).items,
+            [],
+        )
+        service.search.assert_called_once_with(request, user_id=7)
 
         service.search.side_effect = QueryEmbeddingError("provider details")
         with self.assertRaises(HTTPException) as context:
-            retrieval_api.search(request, service)
+            retrieval_api.search(request, SimpleNamespace(id=7), service)
         self.assertEqual(context.exception.status_code, 503)
         self.assertEqual(context.exception.detail, "Semantic retrieval is temporarily unavailable")
 

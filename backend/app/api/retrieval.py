@@ -11,6 +11,7 @@ from app.schemas.retrieval import RetrievalSearchRequest
 from app.schemas.retrieval import RetrievalSearchResponse
 from app.security.permissions import PermissionCode
 from app.security.dependencies import require_permission
+from app.models.user import User
 from app.services.query_embedding_service import QueryEmbeddingError
 from app.services.retrieval_service import RetrievalService
 
@@ -21,14 +22,14 @@ router = APIRouter(prefix="/retrieval", tags=["Retrieval"])
 @router.post(
     "/search",
     response_model=RetrievalSearchResponse,
-    dependencies=[Depends(require_permission(PermissionCode.DOCUMENTS_READ))],
 )
 def search(
     request: RetrievalSearchRequest,
+    current_user: User = Depends(require_permission(PermissionCode.DOCUMENTS_READ)),
     service: RetrievalService = Depends(get_retrieval_service),
 ) -> RetrievalSearchResponse:
     try:
-        return service.search(request)
+        return service.search(request, user_id=current_user.id)
     except (QueryEmbeddingError, EmbeddingProviderError, VectorStoreError, SQLAlchemyError) as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

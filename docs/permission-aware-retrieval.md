@@ -95,7 +95,7 @@ Phase 12 grants access directly to local users only. It does not:
 - [x] 12.2 Document-access models and Alembic migration
 - [x] 12.3 Repository and policy service
 - [x] 12.4 Document API resource enforcement
-- [ ] 12.5 Retrieval authority enforcement
+- [x] 12.5 Retrieval authority enforcement
 - [ ] 12.6 RAG and citation enforcement
 - [ ] 12.7 Sharing-management API and RBAC
 - [ ] 12.8 Tests, Docker verification, and documentation

@@ -66,7 +66,7 @@ class RetrievalServiceTests(unittest.TestCase):
         embeddings = FakeQueryEmbeddingService()
         service = RetrievalService(embeddings, authority, lambda: store)
 
-        response = service.search(request)
+        response = service.search(request, user_id=7)
 
         self.assertEqual([item.chunk_id for item in response.items], [1, 2])
         self.assertEqual([item.score for item in response.items], [0.9, 0.9])
@@ -75,6 +75,7 @@ class RetrievalServiceTests(unittest.TestCase):
         self.assertTrue(store.closed)
         self.assertEqual(store.search_calls[0]["limit"], 6)
         self.assertEqual(store.search_calls[0]["document_ids"], [12, 18])
+        self.assertEqual(authority.calls[0]["user_id"], 7)
         self.assertEqual(authority.calls[0]["content_types"], ["text/markdown"])
 
     def test_search_maps_verified_source_fields_and_does_not_expose_embedding_data(self) -> None:
@@ -83,7 +84,10 @@ class RetrievalServiceTests(unittest.TestCase):
         authority = FakeAuthorityService([self._authoritative(candidate, document_id=12, chunk_id=4, ordinal=2)])
         service = RetrievalService(FakeQueryEmbeddingService(), authority, lambda: store)
 
-        result = service.search(RetrievalSearchRequest(query="policy")).items[0]
+        result = service.search(
+            RetrievalSearchRequest(query="policy"),
+            user_id=7,
+        ).items[0]
 
         self.assertEqual(result.document_id, 12)
         self.assertEqual(result.document_title, "Policy")
@@ -102,7 +106,7 @@ class RetrievalServiceTests(unittest.TestCase):
         service = RetrievalService(FakeQueryEmbeddingService(), FakeAuthorityService([]), lambda: store)
 
         with self.assertRaisesRegex(RuntimeError, "provider internals"):
-            service.search(RetrievalSearchRequest(query="policy"))
+            service.search(RetrievalSearchRequest(query="policy"), user_id=7)
         self.assertTrue(store.closed)
 
     @staticmethod
