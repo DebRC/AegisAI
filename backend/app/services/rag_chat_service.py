@@ -56,7 +56,7 @@ class RagChatService:
         self.chat_provider = chat_provider
         self.citation_validator = citation_validator
 
-    def stream(self, request: ChatStreamRequest) -> Iterator[ChatGenerationEvent]:
+    def stream(self, request: ChatStreamRequest, *, user_id: int) -> Iterator[ChatGenerationEvent]:
         """Retrieve, stream a model answer, then validate its cited source labels."""
         retrieval_response = self.retrieval.search(
             RetrievalSearchRequest(
@@ -64,7 +64,8 @@ class RagChatService:
                 limit=request.retrieval_limit,
                 document_ids=request.document_ids,
                 content_types=request.content_types,
-            )
+            ),
+            user_id=user_id,
         )
         if not retrieval_response.items:
             yield ChatAnswerFragment(_INSUFFICIENT_CONTEXT_MESSAGE)

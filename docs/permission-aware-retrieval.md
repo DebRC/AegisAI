@@ -79,6 +79,12 @@ an inaccessible document. Revoking a grant affects later retrieval and chat
 requests immediately because PostgreSQL is checked for every request; stale
 Qdrant vectors remain harmless candidates.
 
+The chat route passes its authenticated requester ID to `RagChatService`, which
+requires it when calling retrieval. There is no unscoped chat-retrieval path:
+the prompt builder and citation validator can see only the access-filtered
+retrieval response. A no-access chat turn returns the normal insufficient-
+context completion without calling the LLM or issuing citations.
+
 ### Scope boundaries
 
 Phase 12 grants access directly to local users only. It does not:
@@ -96,6 +102,6 @@ Phase 12 grants access directly to local users only. It does not:
 - [x] 12.3 Repository and policy service
 - [x] 12.4 Document API resource enforcement
 - [x] 12.5 Retrieval authority enforcement
-- [ ] 12.6 RAG and citation enforcement
+- [x] 12.6 RAG and citation enforcement
 - [ ] 12.7 Sharing-management API and RBAC
 - [ ] 12.8 Tests, Docker verification, and documentation

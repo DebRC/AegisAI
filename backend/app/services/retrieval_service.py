@@ -33,7 +33,7 @@ class RetrievalService:
         self,
         request: RetrievalSearchRequest,
         *,
-        user_id: int | None = None,
+        user_id: int,
     ) -> RetrievalSearchResponse:
         """Search with bounded over-fetching, authority validation, and stable ranking."""
         query_embedding = self.query_embeddings.embed_query(request)

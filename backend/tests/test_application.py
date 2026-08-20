@@ -111,7 +111,7 @@ class ApplicationTests(unittest.TestCase):
 
         service = Mock()
         service.stream.return_value = iter((ChatAnswerFragment("No context."), ChatCompletion(False, ())))
-        response = chat_api.stream(ChatStreamRequest(question="Question"), service)
+        response = chat_api.stream(ChatStreamRequest(question="Question"), SimpleNamespace(id=7), service)
 
         self.assertEqual(response.media_type, "text/event-stream")
         self.assertEqual(response.headers["cache-control"], "no-cache, no-transform")
@@ -125,11 +125,13 @@ class ApplicationTests(unittest.TestCase):
         service = Mock()
         service.stream.return_value = iter((ChatAnswerFragment("No context."), ChatCompletion(False, ())))
 
-        messages = list(chat_api.chat_event_stream(service, ChatStreamRequest(question="Question")))
+        request = ChatStreamRequest(question="Question")
+        messages = list(chat_api.chat_event_stream(service, request, user_id=7))
 
         self.assertEqual(len(messages), 2)
         self.assertTrue(messages[0].startswith("event: answer_delta\n"))
         self.assertTrue(messages[1].startswith("event: done\n"))
+        service.stream.assert_called_once_with(request, user_id=7)
         service.close.assert_called_once_with()
 
     def test_retrieval_route_requires_read_permission_and_translates_failures(self) -> None:
