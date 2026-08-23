@@ -2,7 +2,7 @@
 
 AegisAI is a secure, enterprise-oriented knowledge platform in development. It lets organizations ingest internal content, retrieve it safely, and chat with it through a grounded RAG experience.
 
-The backend foundation, document-ingestion boundary, background-processing runtime, text-processing pipeline, embeddings, semantic retrieval, and grounded streaming chat are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, secure document management, Redis/Celery workers, traceable chunks, validated Qdrant indexing, PostgreSQL-authoritative search, and citation-verified RAG responses.
+The backend foundation, document ingestion, background processing, text processing, embeddings, semantic retrieval, grounded streaming chat, and permission-aware access controls are complete: containerized FastAPI services, PostgreSQL, JWT authentication, database-backed RBAC, enterprise SSO, secure document management, Redis/Celery workers, traceable chunks, validated Qdrant indexing, PostgreSQL-authoritative search, direct document sharing, and citation-verified RAG responses.
 
 ## Overview
 
@@ -12,7 +12,7 @@ The backend foundation, document-ingestion boundary, background-processing runti
 | --- | --- | --- |
 | API and local platform | Available | FastAPI API, PostgreSQL 16, Qdrant, Docker Compose, health checks, and Alembic migrations. |
 | Local authentication | Available | User registration, bcrypt password hashing, short-lived access JWTs, rotatable refresh tokens, logout, and inactive-user protection. |
-| Authorization | Available | Local roles and permissions, administrator bootstrap, and request-time RBAC enforcement. |
+| Authorization | Available | Local roles and permissions, administrator bootstrap, request-time RBAC, and direct document read/write sharing. |
 | Enterprise SSO | Available | Google OpenID Connect, GitHub OAuth, and Microsoft Entra ID adapters with PKCE, signed state, nonce validation, account linking, and local AegisAI sessions. |
 | Document ingestion | Available | RBAC-protected upload, metadata management, local persistent original-file storage, SHA-256 integrity metadata, and soft deletion. |
 | Background processing | Available | Redis/Celery workers verify durable uploaded sources outside HTTP requests, with PostgreSQL-backed job state, retries, cancellation, and failure handling. |
@@ -46,7 +46,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 9 — Embeddings and Qdrant indexing | Complete | OpenAI embedding boundary, Qdrant collection safety, durable indexing and cleanup jobs, traceable vector records, and safe status visibility. |
 | Phase 10 — Retrieval and metadata filtering | Complete | Query embedding, safe Qdrant search, controlled filters, PostgreSQL authority checks, deterministic ranking, and RBAC-protected search API. |
 | Phase 11 — RAG chat, streaming, and citations | Complete | RBAC-protected streaming answers, bounded untrusted client history, verified citations, safe failures, and no persisted transcript. |
-| Phase 12 — Permission-aware retrieval | Planned | Resource- and tenant-aware result authorization. |
+| Phase 12 — Permission-aware retrieval | Complete | Direct document sharing filters document APIs, retrieval, RAG context, and citations; tenant isolation remains Phase 19. |
 | Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
 
@@ -59,6 +59,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Embeddings and Qdrant indexing design](docs/embeddings-and-qdrant-indexing.md) defines the Phase 9 vector, lifecycle, idempotency, and safety contract.
 - [Retrieval and metadata filtering design](docs/retrieval-and-metadata-filtering.md) defines the implemented Phase 10 search contract, authority checks, API, and verification workflow.
 - [RAG chat and citations design](docs/rag-chat-and-citations.md) defines the implemented Phase 11 grounding, streaming, citation, and verification contract.
+- [Permission-aware retrieval design](docs/permission-aware-retrieval.md) defines the implemented Phase 12 document-access policy, sharing API, and verification contract.
 
 ## Architecture
 
@@ -289,6 +290,8 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | `GET` | `/documents/{document_id}/processing-jobs` | Inspect safe job history with `documents:read`. |
 | `POST` | `/documents/{document_id}/processing-jobs/{job_id}/retry` | Requeue one failed job with `documents:write`. |
 | `GET` | `/documents/{document_id}/indexing-status` | Inspect current vector progress and safe indexing state with `documents:read`. |
+| `GET` | `/documents/{document_id}/access` | List direct grants with document-level write access. |
+| `PUT`, `DELETE` | `/documents/{document_id}/access/{user_id}` | Create/update or revoke a direct `read`/`write` grant with document-level write access. |
 | `POST` | `/retrieval/search` | Perform bounded semantic search with metadata filters and `documents:read`. |
 | `POST` | `/chat/stream` | Stream a grounded answer and verified citations with `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction` | Inspect safe extraction metadata with `documents:read`. |
@@ -314,11 +317,14 @@ Markdown are supported, and the default streamed limit is 25 MiB. The server
 derives the title, generates the storage key, and records the authenticated
 uploader; clients never supply a storage path or uploader ID.
 
-Document reads and writes use the existing global `documents:read` and
-`documents:write` permissions. `uploader_user_id` is provenance for future
-tenant and resource policies, not a current per-document access rule. See the
-[document ingestion design](docs/document-ingestion.md) for the complete API,
-lifecycle, and storage behavior.
+Document actions require both a global RBAC permission and per-document access.
+The uploader is the implicit owner; a direct `read` or `write` grant can share
+the document with another active local user, while `documents:manage` is the
+explicit administrator override. Unauthorized resources are hidden as `404`.
+Retrieval, chat context, and citations use the same policy. See the
+[permission-aware retrieval design](docs/permission-aware-retrieval.md) for the
+sharing API and policy, and the [document ingestion design](docs/document-ingestion.md)
+for lifecycle and storage behavior.
 
 After an upload, the durable outbox sends source validation and then text
 extraction to the worker. A successful extraction makes the document `READY`.
@@ -371,14 +377,14 @@ Optional filters are controlled document IDs and supported MIME types:
 }
 ```
 
-The caller needs `documents:read`. Results contain current chunk text, source
-locations, document metadata, and similarity scores. Phase 12 will add
-document-level and tenant-aware authorization; the current endpoint applies
-global RBAC only.
+The caller needs `documents:read` and receives only chunks from documents they
+can currently read. Results contain current chunk text, source locations,
+document metadata, and similarity scores; Qdrant candidates are always checked
+against PostgreSQL access policy before they are returned.
 
 For a safe manual end-to-end dataset, use the 30 fictional files in
 [sample-data/knowledge-base](sample-data/knowledge-base/README.md). They include
-overlapping topics that make ingestion, retrieval, citations, and later
+overlapping topics that make ingestion, retrieval, citations, and
 document-level authorization easy to verify without real internal data.
 
 ### Grounded RAG chat
@@ -397,30 +403,8 @@ The SSE response contains `answer_delta` fragments and, for a grounded answer,
 terminal `citations` then `done` events. The citations are generated from the
 current PostgreSQL-verified retrieval results; model labels alone never create
 them. If no verified context is available, `done` reports `answered: false` and
-the server does not call the chat model. The route requires `documents:read`.
-
-Optional `history` is stateless, bounded to ten alternating complete prior
-messages, and treated as untrusted transcript data. It is not stored by AegisAI
-or used as evidence. See the [RAG chat design](docs/rag-chat-and-citations.md)
-for the event and safety contract.
-
-### Grounded RAG chat
-
-After at least one relevant document is indexed, use a POST-capable streaming
-client (not browser `EventSource`) to request a grounded answer:
-
-```bash
-curl --no-buffer -N -X POST http://localhost:8000/chat/stream \
-  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"How are refresh tokens rotated?","retrieval_limit":5}'
-```
-
-The SSE response contains `answer_delta` fragments and, for a grounded answer,
-terminal `citations` then `done` events. The citations are generated from the
-current PostgreSQL-verified retrieval results; model labels alone never create
-them. If no verified context is available, `done` reports `answered: false` and
-the server does not call the chat model. The route requires `documents:read`.
+the server does not call the chat model. The route requires `documents:read`
+and can use only documents the requester is authorized to read.
 
 Optional `history` is stateless, bounded to ten alternating complete prior
 messages, and treated as untrusted transcript data. It is not stored by AegisAI
@@ -453,6 +437,7 @@ The current permission catalogue contains:
 
 ```text
 documents:read     documents:write
+documents:manage
 users:read         users:manage
 roles:read         roles:manage         roles:assign
 ```
@@ -485,7 +470,7 @@ cd backend
 venv/bin/python -m unittest discover -s tests -v
 ```
 
-The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, document cleanup, background-job state, extraction, chunking, reprocessing, embedding validation and idempotency, Qdrant collection safety, retrieval, grounded chat and SSE behavior, Swagger security schemes, migrations, and application startup.
+The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, document cleanup, background-job state, extraction, chunking, reprocessing, embedding validation and idempotency, Qdrant collection safety, document-access grants, permission-aware retrieval, grounded chat and SSE behavior, Swagger security schemes, migrations, and application startup.
 
 The Dockerfile runs this suite during image build and produces the complete Alembic upgrade SQL. Compose runs the suite again before applying migrations and launching the API.
 
@@ -501,7 +486,7 @@ venv/bin/alembic upgrade head
 venv/bin/alembic current
 ```
 
-Review every generated migration before applying it, particularly constraint and index changes. The current migration chain creates users, refresh tokens, RBAC tables and seeded permissions, the `administrator` system role, external-identity bindings, documents, processing/outbox records, extraction/chunk records, embedding pointers, and durable vector-cleanup requests.
+Review every generated migration before applying it, particularly constraint and index changes. The current migration chain creates users, refresh tokens, RBAC tables and seeded permissions, the `administrator` system role, external-identity bindings, documents, direct document-access grants, processing/outbox records, extraction/chunk records, embedding pointers, and durable vector-cleanup requests.
 
 When running Alembic from the host, use a database URL reachable from the host—normally `localhost`, not Compose's internal `postgres` hostname. `ALEMBIC_DATABASE_URL` can override the configured database URL for that command.
 
@@ -541,12 +526,11 @@ When running Alembic from the host, use a database URL reachable from the host�
 
 The next implementation milestones are:
 
-1. **Phase 12:** permission-aware retrieval.
-2. **Phase 13:** audit logging.
-3. **Phase 14:** administration dashboard.
-4. **Phase 15:** Next.js frontend.
-5. **Phase 16:** observability.
-6. **Phase 17:** CI/CD.
-7. **Phase 18:** Kubernetes.
-8. **Phase 19:** multi-tenancy.
-9. **Phase 20:** enterprise API keys, rate limits, and retention policies.
+1. **Phase 13:** audit logging.
+2. **Phase 14:** administration dashboard.
+3. **Phase 15:** Next.js frontend.
+4. **Phase 16:** observability.
+5. **Phase 17:** CI/CD.
+6. **Phase 18:** Kubernetes.
+7. **Phase 19:** multi-tenancy.
+8. **Phase 20:** enterprise API keys, rate limits, and retention policies.

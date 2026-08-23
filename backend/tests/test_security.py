@@ -50,3 +50,4 @@ class SecurityTests(unittest.TestCase):
 
         self.assertEqual(len(values), len(set(values)))
         self.assertIn("roles:manage", values)
+        self.assertIn("documents:manage", values)

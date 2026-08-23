@@ -29,7 +29,12 @@ class RetrievalService:
         self.authority = authority
         self.create_vector_store = create_vector_store
 
-    def search(self, request: RetrievalSearchRequest) -> RetrievalSearchResponse:
+    def search(
+        self,
+        request: RetrievalSearchRequest,
+        *,
+        user_id: int,
+    ) -> RetrievalSearchResponse:
         """Search with bounded over-fetching, authority validation, and stable ranking."""
         query_embedding = self.query_embeddings.embed_query(request)
         vector_store = self.create_vector_store()
@@ -52,6 +57,7 @@ class RetrievalService:
 
         authoritative = self.authority.resolve(
             candidates=candidates,
+            user_id=user_id,
             document_ids=request.document_ids,
             content_types=request.content_types,
         )

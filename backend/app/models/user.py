@@ -59,3 +59,13 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+
+    document_access_grants: Mapped[list["DocumentAccessGrant"]] = relationship(
+        back_populates="grantee",
+        foreign_keys="DocumentAccessGrant.user_id",
+    )
+
+    granted_document_access_grants: Mapped[list["DocumentAccessGrant"]] = relationship(
+        back_populates="granted_by",
+        foreign_keys="DocumentAccessGrant.granted_by_user_id",
+    )

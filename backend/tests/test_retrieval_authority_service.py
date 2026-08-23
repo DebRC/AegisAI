@@ -4,7 +4,7 @@ import unittest
 
 from app.core.config import Settings
 from app.integrations.vector_store.qdrant_store import QdrantSearchCandidate
-from app.models import Document, DocumentChunk, DocumentChunkEmbedding, DocumentExtraction, DocumentStatus
+from app.models import Document, DocumentAccessGrant, DocumentAccessLevel, DocumentChunk, DocumentChunkEmbedding, DocumentExtraction, DocumentStatus
 from app.services.retrieval_authority_service import RetrievalAuthorityService
 from tests.helpers import DatabaseTestCase
 
@@ -35,7 +35,7 @@ class RetrievalAuthorityServiceTests(DatabaseTestCase, unittest.TestCase):
     def test_resolves_current_rows_and_preserves_qdrant_score(self) -> None:
         candidate = self._candidate()
 
-        resolved = self._service().resolve(candidates=[candidate])
+        resolved = self._service().resolve(candidates=[candidate], user_id=self.user.id)
 
         self.assertEqual(len(resolved), 1)
         self.assertIs(resolved[0].document, self.document)
@@ -50,7 +50,7 @@ class RetrievalAuthorityServiceTests(DatabaseTestCase, unittest.TestCase):
             score=0.88,
             payload=self._candidate().payload | {"document_id": self.document.id + 100},
         )
-        self.assertEqual(self._service().resolve(candidates=[payload_mismatch]), [])
+        self.assertEqual(self._service().resolve(candidates=[payload_mismatch], user_id=self.user.id), [])
 
         stale = QdrantSearchCandidate(
             point_id=self.embedding.point_id,
@@ -64,27 +64,51 @@ class RetrievalAuthorityServiceTests(DatabaseTestCase, unittest.TestCase):
         )
         self.embedding.content_sha256 = "f" * 64
         self.session.commit()
-        self.assertEqual(self._service().resolve(candidates=[stale, wrong_identity]), [])
+        self.assertEqual(self._service().resolve(candidates=[stale, wrong_identity], user_id=self.user.id), [])
 
         self.embedding.content_sha256 = self.chunk.content_sha256
         self.document.deleted_at = datetime.now(timezone.utc)
         self.session.commit()
-        self.assertEqual(self._service().resolve(candidates=[self._candidate()]), [])
+        self.assertEqual(self._service().resolve(candidates=[self._candidate()], user_id=self.user.id), [])
 
     def test_applies_document_and_content_type_filters_against_postgres(self) -> None:
         candidate = self._candidate()
 
         self.assertEqual(
-            len(self._service().resolve(candidates=[candidate], document_ids=[self.document.id])),
+            len(self._service().resolve(candidates=[candidate], user_id=self.user.id, document_ids=[self.document.id])),
             1,
         )
         self.assertEqual(
-            self._service().resolve(candidates=[candidate], document_ids=[999]),
+            self._service().resolve(candidates=[candidate], user_id=self.user.id, document_ids=[999]),
             [],
         )
         self.assertEqual(
-            self._service().resolve(candidates=[candidate], content_types=["application/pdf"]),
+            self._service().resolve(candidates=[candidate], user_id=self.user.id, content_types=["application/pdf"]),
             [],
+        )
+
+    def test_discards_candidates_for_documents_not_readable_by_the_requesting_user(self) -> None:
+        reader = self.create_user("reader@example.com")
+        candidate = self._candidate()
+
+        self.assertEqual(
+            self._service().resolve(candidates=[candidate], user_id=reader.id),
+            [],
+        )
+
+        self.session.add(
+            DocumentAccessGrant(
+                document_id=self.document.id,
+                user_id=reader.id,
+                access_level=DocumentAccessLevel.READ,
+                granted_by_user_id=self.user.id,
+            )
+        )
+        self.session.commit()
+
+        self.assertEqual(
+            len(self._service().resolve(candidates=[candidate], user_id=reader.id)),
+            1,
         )
 
     def _service(self) -> RetrievalAuthorityService:

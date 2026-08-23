@@ -78,6 +78,18 @@ class DocumentExtractionNotFoundError(Exception):
     """Raised when an active document does not yet have extracted output."""
 
 
+class DocumentAccessGrantNotFoundError(Exception):
+    """Raised when a direct document-access grant does not exist."""
+
+
+class DocumentAccessOwnerGrantError(Exception):
+    """Raised when an operation tries to store a redundant owner grant."""
+
+
+class DocumentAccessGranteeInactiveError(Exception):
+    """Raised when a grant target is not an active local user."""
+
+
 class ProcessingJobNotFoundError(Exception):
     """Raised when a processing job is absent or belongs to another document."""
 

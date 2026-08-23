@@ -6,6 +6,7 @@ class PermissionCode(str, Enum):
 
     DOCUMENTS_READ = "documents:read"
     DOCUMENTS_WRITE = "documents:write"
+    DOCUMENTS_MANAGE = "documents:manage"
     USERS_READ = "users:read"
     USERS_MANAGE = "users:manage"
     ROLES_READ = "roles:read"
@@ -20,6 +21,7 @@ class PermissionCode(str, Enum):
 PERMISSION_DESCRIPTIONS: dict[PermissionCode, str] = {
     PermissionCode.DOCUMENTS_READ: "Read documents and their metadata.",
     PermissionCode.DOCUMENTS_WRITE: "Create, update, and delete documents.",
+    PermissionCode.DOCUMENTS_MANAGE: "Manage access to every document.",
     PermissionCode.USERS_READ: "View users for administration.",
     PermissionCode.USERS_MANAGE: "Manage user accounts.",
     PermissionCode.ROLES_READ: "View roles and their permissions.",

@@ -11,6 +11,7 @@ from app.models.document_extraction import DocumentChunk
 from app.models.document_extraction import DocumentChunkEmbedding
 from app.models.document_extraction import DocumentExtraction
 from app.repositories.document_chunk_embedding_repository import DocumentChunkEmbeddingRepository
+from app.services.document_access_policy_service import DocumentAccessPolicyService
 
 
 @dataclass(frozen=True)
@@ -30,22 +31,37 @@ class RetrievalAuthorityService:
     def __init__(self, db: Session, configuration: Settings):
         self.configuration = configuration
         self.embeddings = DocumentChunkEmbeddingRepository(db)
+        self.access_policy = DocumentAccessPolicyService(db)
 
     def resolve(
         self,
         *,
         candidates: list[QdrantSearchCandidate],
+        user_id: int,
         document_ids: list[int] | None = None,
         content_types: list[str] | None = None,
     ) -> list[AuthoritativeRetrievalCandidate]:
         """Return candidates whose Qdrant identity and PostgreSQL state agree."""
+        candidate_document_ids = {
+            candidate.payload.get("document_id")
+            for candidate in candidates
+            if isinstance(candidate.payload.get("document_id"), int)
+        }
+        readable_document_ids = self.access_policy.readable_document_ids(
+            user_id=user_id,
+            document_ids=candidate_document_ids,
+        )
+        if document_ids is not None:
+            readable_document_ids.intersection_update(document_ids)
+        effective_document_ids = sorted(readable_document_ids)
+
         records = self.embeddings.resolve_current_by_point_ids(
             point_ids=[candidate.point_id for candidate in candidates],
             provider=self.configuration.EMBEDDING_PROVIDER,
             model=self.configuration.EMBEDDING_MODEL,
             collection_name=self.configuration.QDRANT_COLLECTION_NAME,
             vector_dimension=self.configuration.EMBEDDING_VECTOR_DIMENSION,
-            document_ids=document_ids,
+            document_ids=effective_document_ids,
             content_types=content_types,
         )
         resolved: list[AuthoritativeRetrievalCandidate] = []

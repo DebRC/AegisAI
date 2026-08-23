@@ -1,5 +1,7 @@
 from app.models.document import Document
 from app.models.document import DocumentStatus
+from app.models.document_access_grant import DocumentAccessGrant
+from app.models.document_access_grant import DocumentAccessLevel
 from app.models.document_extraction import DocumentChunk
 from app.models.document_extraction import DocumentChunkEmbedding
 from app.models.document_extraction import DocumentExtraction
@@ -20,6 +22,8 @@ __all__ = [
     "User",
     "Document",
     "DocumentStatus",
+    "DocumentAccessGrant",
+    "DocumentAccessLevel",
     "DocumentExtraction",
     "DocumentChunk",
     "DocumentChunkEmbedding",

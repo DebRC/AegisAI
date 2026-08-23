@@ -15,9 +15,11 @@ class _RetrievalStub:
     def __init__(self, response: RetrievalSearchResponse) -> None:
         self.response = response
         self.requests = []
+        self.user_ids = []
 
-    def search(self, request):
+    def search(self, request, *, user_id: int):
         self.requests.append(request)
+        self.user_ids.append(user_id)
         return self.response
 
 
@@ -75,7 +77,8 @@ class RagChatServiceTests(unittest.TestCase):
                         {"role": "user", "content": "Tell me about the guide."},
                         {"role": "assistant", "content": "It covers AegisAI."},
                     ],
-                )
+                ),
+                user_id=31,
             )
         )
 
@@ -87,19 +90,21 @@ class RagChatServiceTests(unittest.TestCase):
         self.assertEqual(retrieval.requests[0].query, "How does it work?")
         self.assertEqual(retrieval.requests[0].limit, 4)
         self.assertEqual(retrieval.requests[0].document_ids, [3])
+        self.assertEqual(retrieval.user_ids, [31])
         self.assertEqual(provider.messages[0][0].role, "developer")
         self.assertIn("untrusted_conversation_history_json", provider.messages[0][1].content)
 
     def test_returns_an_insufficient_context_completion_without_calling_the_model(self) -> None:
         service, retrieval, provider = self._service([], ("should not be used",))
 
-        events = list(service.stream(ChatStreamRequest(question="What is this?")))
+        events = list(service.stream(ChatStreamRequest(question="What is this?"), user_id=32))
 
         self.assertEqual(events[0], ChatAnswerFragment(
             "I don't have enough verified context in the available documents to answer that question."
         ))
         self.assertEqual(events[1], ChatCompletion(answered=False, citations=()))
         self.assertEqual(len(retrieval.requests), 1)
+        self.assertEqual(retrieval.user_ids, [32])
         self.assertEqual(provider.messages, [])
 
     def test_rejects_empty_or_uncited_or_unknown_citation_answers(self) -> None:
@@ -107,4 +112,4 @@ class RagChatServiceTests(unittest.TestCase):
             with self.subTest(fragments=fragments):
                 service, _, _ = self._service([self._result()], fragments)
                 with self.assertRaises(RagChatServiceError):
-                    list(service.stream(ChatStreamRequest(question="Question")))
+                    list(service.stream(ChatStreamRequest(question="Question"), user_id=33))

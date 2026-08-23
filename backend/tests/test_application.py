@@ -13,12 +13,16 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.api import auth as auth_api
 from app.api import chat as chat_api
 from app.api import database as database_api
+from app.api import document_access as document_access_api
+from app.api import document_access_grants as document_access_grants_api
 from app.api import documents as documents_api
 from app.api import health as health_api
 from app.api import protected as protected_api
 from app.api import rbac as rbac_api
 from app.api import retrieval as retrieval_api
 from app.api.dependencies import get_auth_service
+from app.api.dependencies import get_document_access_policy_service
+from app.api.dependencies import get_document_access_grant_service
 from app.api.dependencies import get_document_service
 from app.api.dependencies import get_document_extraction_query_service
 from app.api.dependencies import get_rbac_service
@@ -29,6 +33,7 @@ from app.api.dependencies import get_rag_chat_service
 from app.api.dependencies import get_sso_account_service
 from app.core.exceptions import AuthenticationError
 from app.core.exceptions import DocumentNotFoundError
+from app.core.exceptions import DocumentAccessOwnerGrantError
 from app.core.exceptions import DocumentExtractionNotFoundError
 from app.core.exceptions import DocumentPersistenceError
 from app.core.exceptions import DocumentValidationError
@@ -48,6 +53,8 @@ from app.security.constants import TokenType
 from app.security.permissions import PermissionCode
 from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
+from app.services.document_access_policy_service import DocumentAccessPolicyService
+from app.services.document_access_grant_service import DocumentAccessGrantService
 from app.services.document_extraction_query_service import DocumentExtractionQueryService
 from app.services.rbac_service import RbacService
 from app.services.query_embedding_service import QueryEmbeddingError
@@ -82,6 +89,14 @@ class ApplicationTests(unittest.TestCase):
             DocumentService,
         )
         self.assertIsInstance(
+            get_document_access_policy_service(session),
+            DocumentAccessPolicyService,
+        )
+        self.assertIsInstance(
+            get_document_access_grant_service(session),
+            DocumentAccessGrantService,
+        )
+        self.assertIsInstance(
             get_document_extraction_query_service(session),
             DocumentExtractionQueryService,
         )
@@ -104,7 +119,7 @@ class ApplicationTests(unittest.TestCase):
 
         service = Mock()
         service.stream.return_value = iter((ChatAnswerFragment("No context."), ChatCompletion(False, ())))
-        response = chat_api.stream(ChatStreamRequest(question="Question"), service)
+        response = chat_api.stream(ChatStreamRequest(question="Question"), SimpleNamespace(id=7), service)
 
         self.assertEqual(response.media_type, "text/event-stream")
         self.assertEqual(response.headers["cache-control"], "no-cache, no-transform")
@@ -118,11 +133,13 @@ class ApplicationTests(unittest.TestCase):
         service = Mock()
         service.stream.return_value = iter((ChatAnswerFragment("No context."), ChatCompletion(False, ())))
 
-        messages = list(chat_api.chat_event_stream(service, ChatStreamRequest(question="Question")))
+        request = ChatStreamRequest(question="Question")
+        messages = list(chat_api.chat_event_stream(service, request, user_id=7))
 
         self.assertEqual(len(messages), 2)
         self.assertTrue(messages[0].startswith("event: answer_delta\n"))
         self.assertTrue(messages[1].startswith("event: done\n"))
+        service.stream.assert_called_once_with(request, user_id=7)
         service.close.assert_called_once_with()
 
     def test_retrieval_route_requires_read_permission_and_translates_failures(self) -> None:
@@ -135,11 +152,15 @@ class ApplicationTests(unittest.TestCase):
         request = RetrievalSearchRequest(query="policy")
         service = Mock()
         service.search.return_value = RetrievalSearchResponse(items=[], limit=10)
-        self.assertEqual(retrieval_api.search(request, service).items, [])
+        self.assertEqual(
+            retrieval_api.search(request, SimpleNamespace(id=7), service).items,
+            [],
+        )
+        service.search.assert_called_once_with(request, user_id=7)
 
         service.search.side_effect = QueryEmbeddingError("provider details")
         with self.assertRaises(HTTPException) as context:
-            retrieval_api.search(request, service)
+            retrieval_api.search(request, SimpleNamespace(id=7), service)
         self.assertEqual(context.exception.status_code, 503)
         self.assertEqual(context.exception.detail, "Semantic retrieval is temporarily unavailable")
 
@@ -226,17 +247,91 @@ class ApplicationTests(unittest.TestCase):
 
         self.assertEqual(actual_permissions, expected_permissions)
 
+    def test_document_access_dependency_hides_denied_resources(self) -> None:
+        user = SimpleNamespace(id=7)
+        policy = Mock()
+
+        policy.can_read.return_value = True
+        self.assertIs(document_access_api.require_document_read_access(3, user, policy), user)
+        policy.can_read.assert_called_once_with(user_id=user.id, document_id=3)
+
+        policy.can_write.return_value = False
+        with self.assertRaises(HTTPException) as context:
+            document_access_api.require_document_write_access(3, user, policy)
+        self.assertEqual(context.exception.status_code, 404)
+        self.assertEqual(context.exception.detail, "Document not found")
+
+    def test_document_access_grant_routes_require_write_and_translate_errors(self) -> None:
+        from app.schemas.document import DocumentAccessGrantRequest
+        from app.models.document_access_grant import DocumentAccessLevel
+
+        for path in (
+            "/documents/{document_id}/access",
+            "/documents/{document_id}/access/{user_id}",
+        ):
+            routes = [route for route in document_access_grants_api.router.routes if route.path == path]
+            self.assertTrue(routes)
+            self.assertTrue(all(self._route_permission(route) == PermissionCode.DOCUMENTS_WRITE for route in routes))
+
+        service = Mock()
+        user = SimpleNamespace(id=7)
+        grant = SimpleNamespace(
+            document_id=3,
+            user_id=8,
+            access_level=DocumentAccessLevel.READ,
+            granted_by_user_id=7,
+        )
+        service.list_grants.return_value = [grant]
+        service.upsert_grant.return_value = grant
+
+        self.assertEqual(
+            document_access_grants_api.list_document_access_grants(3, user, service),
+            [grant],
+        )
+        request = DocumentAccessGrantRequest(access_level=DocumentAccessLevel.READ)
+        self.assertEqual(
+            document_access_grants_api.upsert_document_access_grant(3, 8, request, user, service),
+            grant,
+        )
+        service.upsert_grant.assert_called_once_with(
+            actor_user_id=7,
+            document_id=3,
+            grantee_user_id=8,
+            access_level=DocumentAccessLevel.READ,
+        )
+        self.assertEqual(
+            document_access_grants_api.revoke_document_access_grant(3, 8, user, service).status_code,
+            204,
+        )
+        service.revoke_grant.assert_called_once_with(
+            actor_user_id=7,
+            document_id=3,
+            grantee_user_id=8,
+        )
+
+        service.upsert_grant.side_effect = DocumentAccessOwnerGrantError()
+        with self.assertRaises(HTTPException) as context:
+            document_access_grants_api.upsert_document_access_grant(3, 7, request, user, service)
+        self.assertEqual(context.exception.status_code, 422)
+
     @staticmethod
     def _route_permission(route) -> PermissionCode:
-        permissions = [
-            cell.cell_contents
-            for dependency in route.dependant.dependencies
-            for cell in (getattr(dependency.call, "__closure__", None) or [])
-            if isinstance(cell.cell_contents, PermissionCode)
-        ]
+        def permissions_for(dependency) -> set[PermissionCode]:
+            found = {
+                cell.cell_contents
+                for cell in (getattr(dependency.call, "__closure__", None) or [])
+                if isinstance(cell.cell_contents, PermissionCode)
+            }
+            for nested_dependency in dependency.dependencies:
+                found.update(permissions_for(nested_dependency))
+            return found
+
+        permissions = set()
+        for dependency in route.dependant.dependencies:
+            permissions.update(permissions_for(dependency))
         if len(permissions) != 1:
             raise AssertionError(f"Expected one permission dependency for {route.path}")
-        return permissions[0]
+        return permissions.pop()
 
     def test_openapi_exposes_password_and_pasteable_bearer_schemes(self) -> None:
         openapi = app.openapi()
@@ -376,6 +471,7 @@ class ApplicationTests(unittest.TestCase):
     def test_document_route_handlers_and_error_translation(self) -> None:
         service = Mock()
         user = SimpleNamespace(id=7)
+        policy = Mock()
         upload = SimpleNamespace(
             filename="security-policy.txt",
             content_type="text/plain",
@@ -395,10 +491,8 @@ class ApplicationTests(unittest.TestCase):
             updated_at=now,
         )
         service.upload.return_value = document
-        service.list_documents.return_value = SimpleNamespace(
+        policy.list_readable_documents.return_value = SimpleNamespace(
             items=[document],
-            offset=0,
-            limit=25,
             total=1,
         )
         service.get_document.return_value = document
@@ -413,11 +507,18 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(upload_arguments["original_filename"], "security-policy.txt")
         self.assertEqual(upload_arguments["content_type"], "text/plain")
         self.assertEqual(list(upload_arguments["chunks"]), [b"policy"])
-        page = documents_api.list_documents(0, 25, service)
+        page = documents_api.list_documents(0, 25, user, policy)
         self.assertEqual([item.id for item in page.items], [document.id])
         self.assertEqual(page.items[0].title, document.title)
+        self.assertEqual(page.offset, 0)
+        self.assertEqual(page.limit, 25)
         self.assertEqual(page.total, 1)
-        self.assertIs(documents_api.get_document(3, service), document)
+        policy.list_readable_documents.assert_called_once_with(
+            user_id=user.id,
+            offset=0,
+            limit=25,
+        )
+        self.assertIs(documents_api.get_document(3, service, user), document)
         self.assertIs(
             documents_api.rename_document(
                 3,
@@ -436,7 +537,7 @@ class ApplicationTests(unittest.TestCase):
 
         service.get_document.side_effect = DocumentNotFoundError()
         with self.assertRaises(HTTPException) as context:
-            documents_api.get_document(3, service)
+            documents_api.get_document(3, service, user)
         self.assertEqual(context.exception.status_code, 404)
 
         self.assertEqual(
@@ -460,6 +561,7 @@ class ApplicationTests(unittest.TestCase):
 
     def test_document_extraction_route_handlers(self) -> None:
         service = Mock()
+        user = SimpleNamespace(id=7)
         now = datetime.now(timezone.utc)
         extraction = SimpleNamespace(
             id=8,
@@ -487,13 +589,13 @@ class ApplicationTests(unittest.TestCase):
         )
         service.request_reprocessing.return_value = job
 
-        self.assertIs(documents_api.get_document_extraction(3, service), extraction)
-        page = documents_api.list_document_chunks(3, 0, 25, service)
+        self.assertIs(documents_api.get_document_extraction(3, service, user), extraction)
+        page = documents_api.list_document_chunks(3, 0, 25, service, user)
         self.assertEqual([item.id for item in page.items], [chunk.id])
         self.assertEqual(page.total, 1)
-        self.assertIs(documents_api.reprocess_document(3, service, Mock()), job)
+        self.assertIs(documents_api.reprocess_document(3, service, user), job)
 
         service.get_extraction.side_effect = DocumentExtractionNotFoundError()
         with self.assertRaises(HTTPException) as context:
-            documents_api.get_document_extraction(3, service)
+            documents_api.get_document_extraction(3, service, user)
         self.assertEqual(context.exception.status_code, 404)

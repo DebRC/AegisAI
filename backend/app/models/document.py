@@ -100,3 +100,8 @@ class Document(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+
+    access_grants: Mapped[list["DocumentAccessGrant"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
