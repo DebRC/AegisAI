@@ -20,6 +20,7 @@ from app.schemas.rbac import RolePermissionResponse
 from app.schemas.rbac import RoleResponse
 from app.schemas.rbac import UserRoleResponse
 from app.services.rbac_service import RbacService
+from app.models.user import User
 from app.security.dependencies import require_permission
 from app.security.permissions import PermissionCode
 
@@ -111,14 +112,19 @@ def list_roles(
     "/roles",
     response_model=RoleResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission(PermissionCode.ROLES_MANAGE))],
 )
 def create_role(
     request: RoleCreateRequest,
     service: RbacService = Depends(get_rbac_service),
+    *,
+    current_user: User = Depends(require_permission(PermissionCode.ROLES_MANAGE)),
 ):
     try:
-        return service.create_role(request.name, request.description)
+        return service.create_role(
+            request.name,
+            request.description,
+            actor_user_id=current_user.id,
+        )
     except RoleAlreadyExistsError as error:
         raise _service_error_to_http_exception(error) from error
 
@@ -126,14 +132,15 @@ def create_role(
 @router.delete(
     "/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(PermissionCode.ROLES_MANAGE))],
 )
 def delete_role(
     role_id: int,
     service: RbacService = Depends(get_rbac_service),
+    *,
+    current_user: User = Depends(require_permission(PermissionCode.ROLES_MANAGE)),
 ) -> Response:
     try:
-        service.delete_role(role_id)
+        service.delete_role(role_id, actor_user_id=current_user.id)
     except (RoleNotFoundError, SystemRoleModificationError) as error:
         raise _service_error_to_http_exception(error) from error
 
@@ -159,15 +166,20 @@ def list_role_permissions(
     "/roles/{role_id}/permissions/{permission_id}",
     response_model=RolePermissionResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission(PermissionCode.ROLES_MANAGE))],
 )
 def grant_role_permission(
     role_id: int,
     permission_id: int,
     service: RbacService = Depends(get_rbac_service),
+    *,
+    current_user: User = Depends(require_permission(PermissionCode.ROLES_MANAGE)),
 ):
     try:
-        return service.grant_permission(role_id, permission_id)
+        return service.grant_permission(
+            role_id,
+            permission_id,
+            actor_user_id=current_user.id,
+        )
     except (
         RoleNotFoundError,
         PermissionNotFoundError,
@@ -179,15 +191,16 @@ def grant_role_permission(
 @router.delete(
     "/roles/{role_id}/permissions/{permission_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(PermissionCode.ROLES_MANAGE))],
 )
 def revoke_role_permission(
     role_id: int,
     permission_id: int,
     service: RbacService = Depends(get_rbac_service),
+    *,
+    current_user: User = Depends(require_permission(PermissionCode.ROLES_MANAGE)),
 ) -> Response:
     try:
-        service.revoke_permission(role_id, permission_id)
+        service.revoke_permission(role_id, permission_id, actor_user_id=current_user.id)
     except (RoleNotFoundError, RolePermissionNotFoundError) as error:
         raise _service_error_to_http_exception(error) from error
 
@@ -213,15 +226,16 @@ def list_user_roles(
     "/users/{user_id}/roles/{role_id}",
     response_model=UserRoleResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission(PermissionCode.ROLES_ASSIGN))],
 )
 def assign_user_role(
     user_id: int,
     role_id: int,
     service: RbacService = Depends(get_rbac_service),
+    *,
+    current_user: User = Depends(require_permission(PermissionCode.ROLES_ASSIGN)),
 ):
     try:
-        return service.assign_role(user_id, role_id)
+        return service.assign_role(user_id, role_id, actor_user_id=current_user.id)
     except (
         UserNotFoundError,
         RoleNotFoundError,
@@ -233,15 +247,16 @@ def assign_user_role(
 @router.delete(
     "/users/{user_id}/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(PermissionCode.ROLES_ASSIGN))],
 )
 def remove_user_role(
     user_id: int,
     role_id: int,
     service: RbacService = Depends(get_rbac_service),
+    *,
+    current_user: User = Depends(require_permission(PermissionCode.ROLES_ASSIGN)),
 ) -> Response:
     try:
-        service.remove_role(user_id, role_id)
+        service.remove_role(user_id, role_id, actor_user_id=current_user.id)
     except (
         UserNotFoundError,
         RoleNotFoundError,

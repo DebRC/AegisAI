@@ -15,6 +15,8 @@ from app.core.exceptions import RoleNotFoundError
 from app.core.exceptions import SystemRoleModificationError
 from app.db.base import Base
 from app.models import Permission
+from app.models import AuditEvent
+from app.models import AuditEventType
 from app.models import Role
 from app.models import User
 from app.repositories.permission_repository import PermissionRepository
@@ -163,3 +165,27 @@ class RbacServiceTests(unittest.TestCase):
 
         self.assertEqual(context.exception.status_code, 403)
         self.assertEqual(context.exception.detail, "Insufficient permissions")
+
+    def test_records_successful_mutations_with_the_authenticated_actor(self) -> None:
+        role = self.service.create_role("analyst", "Read documents", actor_user_id=self.user.id)
+        permission_id = self._permission_id(PermissionCode.DOCUMENTS_READ)
+        self.service.grant_permission(role.id, permission_id, actor_user_id=self.user.id)
+        self.service.assign_role(self.user.id, role.id, actor_user_id=self.user.id)
+        self.service.remove_role(self.user.id, role.id, actor_user_id=self.user.id)
+        self.service.revoke_permission(role.id, permission_id, actor_user_id=self.user.id)
+        self.service.delete_role(role.id, actor_user_id=self.user.id)
+
+        events = self.session.query(AuditEvent).order_by(AuditEvent.id).all()
+        self.assertEqual(
+            [event.event_type for event in events],
+            [
+                AuditEventType.RBAC_ROLE_CREATED,
+                AuditEventType.RBAC_ROLE_PERMISSION_GRANTED,
+                AuditEventType.RBAC_USER_ROLE_ASSIGNED,
+                AuditEventType.RBAC_USER_ROLE_REMOVED,
+                AuditEventType.RBAC_ROLE_PERMISSION_REVOKED,
+                AuditEventType.RBAC_ROLE_DELETED,
+            ],
+        )
+        self.assertTrue(all(event.actor_user_id == self.user.id for event in events))
+        self.assertEqual(events[1].metadata_, {"permission_id": permission_id})

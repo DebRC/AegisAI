@@ -6,6 +6,9 @@ from datetime import timezone
 from app.core.exceptions import AuthenticationError
 from app.core.exceptions import UserAlreadyExistsError
 from app.models import RefreshToken
+from app.models import AuditEvent
+from app.models import AuditEventOutcome
+from app.models import AuditEventType
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.schemas.auth import RegisterRequest
 from app.security.jwt import decode_token
@@ -103,3 +106,33 @@ class AuthServiceTests(DatabaseTestCase, unittest.TestCase):
 
         stored = RefreshTokenRepository(self.session).get_by_token(session.refresh_token)
         self.assertIsNotNone(stored.revoked_at)
+
+    def test_records_safe_authentication_events(self) -> None:
+        user = self.service.register(
+            RegisterRequest(
+                email="person@example.com",
+                full_name="Test Person",
+                password="strong-password",
+            )
+        )
+        with self.assertRaises(AuthenticationError):
+            self.service.login(user.email, "incorrect-password")
+        session = self.service.login(user.email, "strong-password")
+        refreshed = self.service.refresh(session.refresh_token)
+        self.service.logout(refreshed.refresh_token)
+
+        events = self.session.query(AuditEvent).order_by(AuditEvent.id).all()
+        self.assertEqual(
+            [event.event_type for event in events],
+            [
+                AuditEventType.AUTH_LOGIN_FAILED,
+                AuditEventType.AUTH_LOGIN_SUCCEEDED,
+                AuditEventType.AUTH_REFRESH_SUCCEEDED,
+                AuditEventType.AUTH_LOGOUT_SUCCEEDED,
+            ],
+        )
+        self.assertEqual(events[0].outcome, AuditEventOutcome.DENIED)
+        self.assertEqual(events[0].target_id, user.id)
+        self.assertEqual(events[0].metadata_, {"failure_category": "invalid_credentials"})
+        self.assertEqual(events[1].actor_user_id, user.id)
+        self.assertEqual(events[1].target_type, "session")

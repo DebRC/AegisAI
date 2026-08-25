@@ -30,9 +30,11 @@ class AuditEventService:
         "access_level",
         "content_type",
         "failure_category",
+        "permission_id",
         "previous_access_level",
         "provider",
         "result_count",
+        "role_id",
     })
     _MAX_METADATA_STRING_LENGTH = 128
 

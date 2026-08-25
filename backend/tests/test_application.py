@@ -442,16 +442,16 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(rbac_api.list_permissions(service), ["permission"])
         self.assertEqual(rbac_api.list_roles(service), [role])
         self.assertIs(
-            rbac_api.create_role(RoleCreateRequest(name="reader"), service),
+            rbac_api.create_role(RoleCreateRequest(name="reader"), service, current_user=SimpleNamespace(id=7)),
             role,
         )
-        self.assertEqual(rbac_api.delete_role(1, service).status_code, 204)
+        self.assertEqual(rbac_api.delete_role(1, service, current_user=SimpleNamespace(id=7)).status_code, 204)
         self.assertEqual(rbac_api.list_role_permissions(1, service), ["role-permission"])
-        self.assertEqual(rbac_api.grant_role_permission(1, 2, service), "role-permission")
-        self.assertEqual(rbac_api.revoke_role_permission(1, 2, service).status_code, 204)
+        self.assertEqual(rbac_api.grant_role_permission(1, 2, service, current_user=SimpleNamespace(id=7)), "role-permission")
+        self.assertEqual(rbac_api.revoke_role_permission(1, 2, service, current_user=SimpleNamespace(id=7)).status_code, 204)
         self.assertEqual(rbac_api.list_user_roles(1, service), ["user-role"])
-        self.assertEqual(rbac_api.assign_user_role(1, 2, service), "user-role")
-        self.assertEqual(rbac_api.remove_user_role(1, 2, service).status_code, 204)
+        self.assertEqual(rbac_api.assign_user_role(1, 2, service, current_user=SimpleNamespace(id=7)), "user-role")
+        self.assertEqual(rbac_api.remove_user_role(1, 2, service, current_user=SimpleNamespace(id=7)).status_code, 204)
 
         self.assertEqual(
             rbac_api._service_error_to_http_exception(RoleNotFoundError()).status_code,

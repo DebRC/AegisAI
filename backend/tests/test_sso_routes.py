@@ -12,6 +12,7 @@ from app.core.exceptions import SsoEmailVerificationError
 from app.integrations.sso.models import ProviderIdentity
 from app.integrations.sso.models import ProviderName
 from app.integrations.sso.models import ProviderTokens
+from app.models import AuditEventType
 from app.schemas.token import LoginResponse
 from app.schemas.user import UserResponse
 from app.security.sso_transactions import SsoTransactionManager
@@ -134,7 +135,12 @@ class SsoRouteTests(unittest.TestCase):
         self.accounts.resolve_identity.assert_called_once_with(
             self.provider.get_identity.return_value,
         )
-        self.auth_service.issue_session.assert_called_once_with(self.local_user)
+        self.auth_service.issue_session.assert_called_once_with(
+            self.local_user,
+            success_event_type=AuditEventType.AUTH_SSO_SUCCEEDED,
+            failure_event_type=AuditEventType.AUTH_SSO_FAILED,
+            metadata={"provider": "github"},
+        )
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(response.headers["pragma"], "no-cache")
         self.assertIn("Max-Age=0", response.headers["set-cookie"])
