@@ -10,6 +10,9 @@ from app.schemas.retrieval import RetrievalSearchResult
 from app.services.query_embedding_service import QueryEmbeddingService
 from app.services.retrieval_authority_service import AuthoritativeRetrievalCandidate
 from app.services.retrieval_authority_service import RetrievalAuthorityService
+from app.services.audit_event_service import AuditEventService
+from app.models.audit_event import AuditEventOutcome
+from app.models.audit_event import AuditEventType
 
 
 _MAX_CANDIDATE_LIMIT = 100
@@ -24,10 +27,12 @@ class RetrievalService:
         query_embeddings: QueryEmbeddingService,
         authority: RetrievalAuthorityService,
         create_vector_store: VectorStoreFactory,
+        audit_events: AuditEventService | None = None,
     ) -> None:
         self.query_embeddings = query_embeddings
         self.authority = authority
         self.create_vector_store = create_vector_store
+        self.audit_events = audit_events
 
     def search(
         self,
@@ -36,35 +41,62 @@ class RetrievalService:
         user_id: int,
     ) -> RetrievalSearchResponse:
         """Search with bounded over-fetching, authority validation, and stable ranking."""
-        query_embedding = self.query_embeddings.embed_query(request)
-        vector_store = self.create_vector_store()
         try:
-            candidates = vector_store.search(
-                vector=query_embedding.vector,
-                provider=query_embedding.provider,
-                model=query_embedding.model,
-                limit=min(_MAX_CANDIDATE_LIMIT, max(request.limit * 3, request.limit)),
+            query_embedding = self.query_embeddings.embed_query(request)
+            vector_store = self.create_vector_store()
+            try:
+                candidates = vector_store.search(
+                    vector=query_embedding.vector,
+                    provider=query_embedding.provider,
+                    model=query_embedding.model,
+                    limit=min(_MAX_CANDIDATE_LIMIT, max(request.limit * 3, request.limit)),
+                    document_ids=request.document_ids,
+                    content_types=request.content_types,
+                )
+            finally:
+                try:
+                    vector_store.close()
+                except Exception:
+                    # Client cleanup must not replace a successful or safe search
+                    # result with an infrastructure-specific exception.
+                    pass
+
+            authoritative = self.authority.resolve(
+                candidates=candidates,
+                user_id=user_id,
                 document_ids=request.document_ids,
                 content_types=request.content_types,
             )
-        finally:
-            try:
-                vector_store.close()
-            except Exception:
-                # Client cleanup must not replace a successful or safe search
-                # result with an infrastructure-specific exception.
-                pass
-
-        authoritative = self.authority.resolve(
-            candidates=candidates,
+            ranked = sorted(authoritative, key=self._ranking_key)
+            response = RetrievalSearchResponse(
+                items=[self._to_result(item) for item in ranked[: request.limit]],
+                limit=request.limit,
+            )
+        except Exception:
+            self._record_search(user_id=user_id, outcome=AuditEventOutcome.FAILED)
+            raise
+        self._record_search(
             user_id=user_id,
-            document_ids=request.document_ids,
-            content_types=request.content_types,
+            outcome=AuditEventOutcome.SUCCEEDED,
+            result_count=len(response.items),
         )
-        ranked = sorted(authoritative, key=self._ranking_key)
-        return RetrievalSearchResponse(
-            items=[self._to_result(item) for item in ranked[: request.limit]],
-            limit=request.limit,
+        return response
+
+    def _record_search(
+        self,
+        *,
+        user_id: int,
+        outcome: AuditEventOutcome,
+        result_count: int | None = None,
+    ) -> None:
+        if self.audit_events is None:
+            return
+        metadata = {"result_count": result_count} if result_count is not None else None
+        self.audit_events.record_best_effort(
+            event_type=AuditEventType.RETRIEVAL_SEARCH,
+            outcome=outcome,
+            actor_user_id=user_id,
+            metadata=metadata,
         )
 
     @staticmethod

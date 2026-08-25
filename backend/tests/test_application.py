@@ -519,6 +519,7 @@ class ApplicationTests(unittest.TestCase):
             limit=25,
         )
         self.assertIs(documents_api.get_document(3, service, user), document)
+        service.get_document.assert_called_once_with(3, audit_actor_user_id=user.id)
         self.assertIs(
             documents_api.rename_document(
                 3,

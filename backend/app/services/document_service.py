@@ -109,8 +109,25 @@ class DocumentService:
             total=self.documents.count_active(),
         )
 
-    def get_document(self, document_id: int) -> Document:
+    def get_document(
+        self,
+        document_id: int,
+        *,
+        audit_actor_user_id: int | None = None,
+    ) -> Document:
         """Return non-deleted metadata or hide deleted records as not found."""
+        document = self._get_active_document(document_id)
+        if audit_actor_user_id is not None:
+            self.audit_events.record_best_effort(
+                event_type=AuditEventType.DOCUMENT_READ,
+                outcome=AuditEventOutcome.SUCCEEDED,
+                actor_user_id=audit_actor_user_id,
+                target_type="document",
+                target_id=document.id,
+            )
+        return document
+
+    def _get_active_document(self, document_id: int) -> Document:
         document = self.documents.get_active_by_id(document_id)
         if document is None:
             raise DocumentNotFoundError()
@@ -125,7 +142,7 @@ class DocumentService:
     ) -> Document:
         """Change only an active document's display title."""
         normalized_title = self._validate_title(title)
-        document = self.get_document(document_id)
+        document = self._get_active_document(document_id)
         document.title = normalized_title
 
         try:
@@ -145,7 +162,7 @@ class DocumentService:
 
     def delete_document(self, document_id: int, *, actor_user_id: int | None = None) -> None:
         """Soft-delete metadata, then make a best-effort object cleanup attempt."""
-        document = self.get_document(document_id)
+        document = self._get_active_document(document_id)
 
         try:
             self.processing_jobs.cancel_document_jobs(document_id=document.id)

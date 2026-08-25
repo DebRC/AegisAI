@@ -39,6 +39,7 @@ class AuditEventService:
     _MAX_METADATA_STRING_LENGTH = 128
 
     def __init__(self, db: Session):
+        self.db = db
         self.events = AuditEventRepository(db)
 
     def record(
@@ -67,6 +68,14 @@ class AuditEventService:
                 metadata_=safe_metadata,
             )
         )
+
+    def record_best_effort(self, **kwargs: object) -> None:
+        """Persist read telemetry without allowing audit availability to affect access."""
+        try:
+            self.record(**kwargs)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
 
     @staticmethod
     def _validate_event_type(event_type: AuditEventType) -> None:

@@ -279,6 +279,19 @@ class DocumentServiceTests(DatabaseTestCase, unittest.TestCase):
         with self.assertRaises(DocumentNotFoundError):
             service.get_document(9999)
 
+    def test_document_metadata_read_records_safe_best_effort_telemetry(self) -> None:
+        service = DocumentService(self.session, self.storage)
+        document = self._upload(service, "security-policy.txt")
+
+        service.get_document(document.id, audit_actor_user_id=self.user.id)
+
+        events = self.session.query(AuditEvent).order_by(AuditEvent.id).all()
+        self.assertEqual(events[-1].event_type, AuditEventType.DOCUMENT_READ)
+        self.assertEqual(events[-1].outcome, AuditEventOutcome.SUCCEEDED)
+        self.assertEqual(events[-1].actor_user_id, self.user.id)
+        self.assertEqual(events[-1].target_id, document.id)
+        self.assertEqual(events[-1].metadata_, {})
+
     def test_rename_and_delete_update_visibility_and_storage(self) -> None:
         service = DocumentService(self.session, self.storage)
         document = self._upload(service, "security-policy.txt")

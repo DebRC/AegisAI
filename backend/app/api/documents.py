@@ -152,10 +152,10 @@ def list_documents(
 def get_document(
     document_id: int,
     service: DocumentService = Depends(get_document_service),
-    _: User = Depends(require_document_read_access),
+    current_user: User = Depends(require_document_read_access),
 ) -> DocumentResponse:
     try:
-        return service.get_document(document_id)
+        return service.get_document(document_id, audit_actor_user_id=current_user.id)
     except DocumentNotFoundError as error:
         raise _document_error_to_http_exception(error) from error
 

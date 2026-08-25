@@ -23,8 +23,8 @@ replacement for future operational observability in Phase 16.
   one PostgreSQL transaction. If either cannot commit, neither succeeds.
 - **Best-effort read telemetry:** document-read, retrieval, and chat audit
   events must not turn an otherwise successful read into a user-visible server
-  error. Their recording failure is logged safely for operations and does not
-  expose internal details to the caller.
+  error. Their recording failure is safely discarded and does not expose
+  internal details to the caller.
 - **No secondary authorization source:** audits describe decisions already made;
   they never grant access or replace RBAC/document-access policy checks.
 
@@ -85,6 +85,6 @@ full distributed tracing. Those belong to Phases 14, 16, 19, and 20.
 - [x] 13.3 Repository and audit service
 - [x] 13.4 Authentication and RBAC events
 - [x] 13.5 Document and sharing events
-- [ ] 13.6 Retrieval and RAG access events
+- [x] 13.6 Retrieval and RAG access events
 - [ ] 13.7 Protected audit-query API
 - [ ] 13.8 Tests, Docker verification, and documentation
