@@ -9,10 +9,13 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import DocumentPersistenceError
 from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import DocumentValidationError
+from app.models.audit_event import AuditEventOutcome
+from app.models.audit_event import AuditEventType
 from app.models.document import Document
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.document_extraction_repository import DocumentExtractionRepository
 from app.services.processing_job_service import ProcessingJobService
+from app.services.audit_event_service import AuditEventService
 from app.storage.documents import DocumentStorage
 from app.storage.documents import StoredDocument
 
@@ -45,6 +48,7 @@ class DocumentService:
         self.documents = DocumentRepository(db)
         self.extractions = DocumentExtractionRepository(db)
         self.processing_jobs = ProcessingJobService(db)
+        self.audit_events = AuditEventService(db)
         self.storage = storage
 
     def upload(
@@ -76,6 +80,14 @@ class DocumentService:
                 )
             )
             self.processing_jobs.create_source_integrity_job(document_id=document.id)
+            self.audit_events.record(
+                event_type=AuditEventType.DOCUMENT_UPLOADED,
+                outcome=AuditEventOutcome.SUCCEEDED,
+                actor_user_id=uploader_user_id,
+                target_type="document",
+                target_id=document.id,
+                metadata={"content_type": normalized_content_type},
+            )
             self._commit()
             return document
         except Exception as error:
@@ -104,7 +116,13 @@ class DocumentService:
             raise DocumentNotFoundError()
         return document
 
-    def rename_document(self, document_id: int, title: str) -> Document:
+    def rename_document(
+        self,
+        document_id: int,
+        title: str,
+        *,
+        actor_user_id: int | None = None,
+    ) -> Document:
         """Change only an active document's display title."""
         normalized_title = self._validate_title(title)
         document = self.get_document(document_id)
@@ -112,13 +130,20 @@ class DocumentService:
 
         try:
             self.documents.update()
+            self.audit_events.record(
+                event_type=AuditEventType.DOCUMENT_RENAMED,
+                outcome=AuditEventOutcome.SUCCEEDED,
+                actor_user_id=actor_user_id,
+                target_type="document",
+                target_id=document.id,
+            )
             self._commit()
             return document
         except Exception as error:
             self.db.rollback()
             raise DocumentPersistenceError() from error
 
-    def delete_document(self, document_id: int) -> None:
+    def delete_document(self, document_id: int, *, actor_user_id: int | None = None) -> None:
         """Soft-delete metadata, then make a best-effort object cleanup attempt."""
         document = self.get_document(document_id)
 
@@ -128,6 +153,13 @@ class DocumentService:
             self.extractions.delete_by_document_id(document.id)
             document.deleted_at = datetime.now(timezone.utc)
             self.documents.update()
+            self.audit_events.record(
+                event_type=AuditEventType.DOCUMENT_DELETED,
+                outcome=AuditEventOutcome.SUCCEEDED,
+                actor_user_id=actor_user_id,
+                target_type="document",
+                target_id=document.id,
+            )
             self._commit()
         except Exception as error:
             self.db.rollback()

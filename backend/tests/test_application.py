@@ -528,7 +528,13 @@ class ApplicationTests(unittest.TestCase):
             ),
             document,
         )
+        service.rename_document.assert_called_once_with(
+            3,
+            "Updated title",
+            actor_user_id=user.id,
+        )
         self.assertEqual(documents_api.delete_document(3, service, user).status_code, 204)
+        service.delete_document.assert_called_once_with(3, actor_user_id=user.id)
 
         service.upload.side_effect = DocumentValidationError()
         with self.assertRaises(HTTPException) as context:

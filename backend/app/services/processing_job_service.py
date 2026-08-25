@@ -8,6 +8,8 @@ from app.extraction.processing import NormalizedText
 from app.extraction.processing import TextChunk
 from app.core.exceptions import DocumentNotFoundError, ProcessingJobNotFoundError, ProcessingJobPersistenceError, ProcessingJobStateError
 from app.models.document import DocumentStatus
+from app.models.audit_event import AuditEventOutcome
+from app.models.audit_event import AuditEventType
 from app.models.document_extraction import DocumentChunk
 from app.models.document_extraction import DocumentExtraction
 from app.models.document_extraction import DocumentChunkEmbedding
@@ -20,6 +22,7 @@ from app.repositories.document_extraction_repository import DocumentExtractionRe
 from app.repositories.processing_job_repository import ProcessingJobRepository
 from app.repositories.processing_outbox_event_repository import ProcessingOutboxEventRepository
 from app.repositories.vector_cleanup_request_repository import VectorCleanupRequestRepository
+from app.services.audit_event_service import AuditEventService
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,7 @@ class ProcessingJobService:
         self.jobs = ProcessingJobRepository(db)
         self.outbox_events = ProcessingOutboxEventRepository(db)
         self.vector_cleanup_requests = VectorCleanupRequestRepository(db)
+        self.audit_events = AuditEventService(db)
 
     def create_source_integrity_job(self, *, document_id: int, now: datetime | None = None) -> ProcessingJob:
         """Add a job and an outbox event, leaving the caller to commit both."""
@@ -85,6 +89,7 @@ class ProcessingJobService:
         self,
         *,
         document_id: int,
+        actor_user_id: int | None = None,
         now: datetime | None = None,
     ) -> ProcessingJob:
         """Queue one replacement extraction while retaining current output."""
@@ -108,6 +113,13 @@ class ProcessingJobService:
                 document_id=document.id,
                 job_type=self.TEXT_EXTRACTION_JOB_TYPE,
                 timestamp=now or self._now(),
+            )
+            self.audit_events.record(
+                event_type=AuditEventType.DOCUMENT_REPROCESS_QUEUED,
+                outcome=AuditEventOutcome.SUCCEEDED,
+                actor_user_id=actor_user_id,
+                target_type="document",
+                target_id=document.id,
             )
             self._commit()
             return job

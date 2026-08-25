@@ -6,6 +6,8 @@ from app.core.exceptions import DocumentAccessOwnerGrantError
 from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import UserNotFoundError
 from app.models import Document
+from app.models import AuditEvent
+from app.models import AuditEventType
 from app.models import DocumentAccessLevel
 from app.models import Permission
 from app.models import Role
@@ -61,6 +63,23 @@ class DocumentAccessGrantServiceTests(DatabaseTestCase, unittest.TestCase):
             actor_user_id=self.owner.id,
             document_id=self.document.id,
         ), [])
+        events = self.session.query(AuditEvent).order_by(AuditEvent.id).all()
+        self.assertEqual(
+            [event.event_type for event in events],
+            [
+                AuditEventType.DOCUMENT_ACCESS_GRANT_CREATED,
+                AuditEventType.DOCUMENT_ACCESS_GRANT_UPDATED,
+                AuditEventType.DOCUMENT_ACCESS_GRANT_REVOKED,
+            ],
+        )
+        self.assertEqual([event.actor_user_id for event in events], [self.owner.id] * 3)
+        self.assertEqual([event.target_id for event in events], [self.document.id] * 3)
+        self.assertEqual(events[0].metadata_, {"access_level": "read"})
+        self.assertEqual(
+            events[1].metadata_,
+            {"access_level": "write", "previous_access_level": "read"},
+        )
+        self.assertEqual(events[2].metadata_, {"access_level": "write"})
 
     def test_writer_can_manage_grants_and_administrator_can_override(self) -> None:
         self.service.upsert_grant(

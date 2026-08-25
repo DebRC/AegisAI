@@ -60,9 +60,12 @@ class DocumentExtractionQueryService:
             total=self.extractions.count_chunks_by_document_id(document_id),
         )
 
-    def request_reprocessing(self, document_id: int):
+    def request_reprocessing(self, document_id: int, *, actor_user_id: int | None = None):
         self._get_active_document_id(document_id)
-        return self.processing_jobs.request_text_reprocessing(document_id=document_id)
+        return self.processing_jobs.request_text_reprocessing(
+            document_id=document_id,
+            actor_user_id=actor_user_id,
+        )
 
     def _get_active_document_id(self, document_id: int) -> int:
         document = self.documents.get_active_by_id(document_id)
