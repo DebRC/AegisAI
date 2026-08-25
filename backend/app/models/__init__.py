@@ -1,3 +1,6 @@
+from app.models.audit_event import AuditEvent
+from app.models.audit_event import AuditEventOutcome
+from app.models.audit_event import AuditEventType
 from app.models.document import Document
 from app.models.document import DocumentStatus
 from app.models.document_access_grant import DocumentAccessGrant
@@ -20,6 +23,9 @@ from app.models.vector_cleanup_request import VectorCleanupRequest
 
 __all__ = [
     "User",
+    "AuditEvent",
+    "AuditEventOutcome",
+    "AuditEventType",
     "Document",
     "DocumentStatus",
     "DocumentAccessGrant",

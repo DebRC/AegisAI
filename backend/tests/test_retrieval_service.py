@@ -46,6 +46,14 @@ class FakeAuthorityService:
         return self.resolved
 
 
+class FakeAuditEvents:
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+
+    def record_best_effort(self, **kwargs: object) -> None:
+        self.events.append(kwargs)
+
+
 class RetrievalServiceTests(unittest.TestCase):
     def test_search_overfetches_verifies_ranks_and_bounds_results(self) -> None:
         request = RetrievalSearchRequest(
@@ -108,6 +116,24 @@ class RetrievalServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "provider internals"):
             service.search(RetrievalSearchRequest(query="policy"), user_id=7)
         self.assertTrue(store.closed)
+
+    def test_records_only_safe_search_telemetry(self) -> None:
+        candidate = self._candidate("a", 0.8)
+        audit_events = FakeAuditEvents()
+        service = RetrievalService(
+            FakeQueryEmbeddingService(),
+            FakeAuthorityService([self._authoritative(candidate, document_id=12, chunk_id=4, ordinal=2)]),
+            lambda: FakeVectorStore([candidate]),
+            audit_events,
+        )
+
+        service.search(RetrievalSearchRequest(query="confidential query"), user_id=7)
+
+        self.assertEqual(len(audit_events.events), 1)
+        event = audit_events.events[0]
+        self.assertEqual(event["actor_user_id"], 7)
+        self.assertEqual(event["metadata"], {"result_count": 1})
+        self.assertNotIn("query", event)
 
     @staticmethod
     def _candidate(suffix: str, score: float) -> QdrantSearchCandidate:

@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api import auth as auth_api
+from app.api import audit_events as audit_events_api
 from app.api import chat as chat_api
 from app.api import database as database_api
 from app.api import document_access as document_access_api
@@ -21,6 +22,7 @@ from app.api import protected as protected_api
 from app.api import rbac as rbac_api
 from app.api import retrieval as retrieval_api
 from app.api.dependencies import get_auth_service
+from app.api.dependencies import get_audit_query_service
 from app.api.dependencies import get_document_access_policy_service
 from app.api.dependencies import get_document_access_grant_service
 from app.api.dependencies import get_document_service
@@ -46,12 +48,14 @@ from app.main import app
 from app.models import DocumentStatus
 from app.models import Role
 from app.schemas.auth import RegisterRequest
+from app.schemas.audit import AuditEventListResponse
 from app.schemas.rbac import RoleCreateRequest
 from app.schemas.document import DocumentRenameRequest
 from app.security import dependencies
 from app.security.constants import TokenType
 from app.security.permissions import PermissionCode
 from app.services.auth_service import AuthService
+from app.services.audit_query_service import AuditQueryService
 from app.services.document_service import DocumentService
 from app.services.document_access_policy_service import DocumentAccessPolicyService
 from app.services.document_access_grant_service import DocumentAccessGrantService
@@ -82,6 +86,7 @@ class ApplicationTests(unittest.TestCase):
         session = Mock()
 
         self.assertIsInstance(get_auth_service(session), AuthService)
+        self.assertIsInstance(get_audit_query_service(session), AuditQueryService)
         self.assertIsInstance(get_rbac_service(session), RbacService)
         self.assertIsInstance(get_sso_account_service(session), SsoAccountService)
         self.assertIsInstance(
@@ -246,6 +251,44 @@ class ApplicationTests(unittest.TestCase):
         }
 
         self.assertEqual(actual_permissions, expected_permissions)
+
+    def test_audit_event_route_requires_audit_read_and_returns_a_safe_page(self) -> None:
+        route = next(route for route in audit_events_api.router.routes if route.path == "/audit-events")
+        self.assertEqual(self._route_permission(route), PermissionCode.AUDIT_READ)
+        service = Mock()
+        event = SimpleNamespace(
+            id=1,
+            actor_user_id=7,
+            event_type="document.read",
+            outcome="succeeded",
+            occurred_at=datetime.now(timezone.utc),
+            target_type="document",
+            target_id=3,
+            metadata_={},
+        )
+        service.list_events.return_value = SimpleNamespace(items=[event], offset=0, limit=25, total=1)
+
+        response = audit_events_api.list_audit_events(
+            offset=0,
+            limit=25,
+            actor_user_id=None,
+            target_id=None,
+            service=service,
+        )
+
+        self.assertIsInstance(response, AuditEventListResponse)
+        self.assertEqual(response.total, 1)
+        service.list_events.assert_called_once_with(
+            offset=0,
+            limit=25,
+            actor_user_id=None,
+            event_type=None,
+            outcome=None,
+            target_type=None,
+            target_id=None,
+            occurred_after=None,
+            occurred_before=None,
+        )
 
     def test_document_access_dependency_hides_denied_resources(self) -> None:
         user = SimpleNamespace(id=7)
@@ -442,16 +485,16 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(rbac_api.list_permissions(service), ["permission"])
         self.assertEqual(rbac_api.list_roles(service), [role])
         self.assertIs(
-            rbac_api.create_role(RoleCreateRequest(name="reader"), service),
+            rbac_api.create_role(RoleCreateRequest(name="reader"), service, current_user=SimpleNamespace(id=7)),
             role,
         )
-        self.assertEqual(rbac_api.delete_role(1, service).status_code, 204)
+        self.assertEqual(rbac_api.delete_role(1, service, current_user=SimpleNamespace(id=7)).status_code, 204)
         self.assertEqual(rbac_api.list_role_permissions(1, service), ["role-permission"])
-        self.assertEqual(rbac_api.grant_role_permission(1, 2, service), "role-permission")
-        self.assertEqual(rbac_api.revoke_role_permission(1, 2, service).status_code, 204)
+        self.assertEqual(rbac_api.grant_role_permission(1, 2, service, current_user=SimpleNamespace(id=7)), "role-permission")
+        self.assertEqual(rbac_api.revoke_role_permission(1, 2, service, current_user=SimpleNamespace(id=7)).status_code, 204)
         self.assertEqual(rbac_api.list_user_roles(1, service), ["user-role"])
-        self.assertEqual(rbac_api.assign_user_role(1, 2, service), "user-role")
-        self.assertEqual(rbac_api.remove_user_role(1, 2, service).status_code, 204)
+        self.assertEqual(rbac_api.assign_user_role(1, 2, service, current_user=SimpleNamespace(id=7)), "user-role")
+        self.assertEqual(rbac_api.remove_user_role(1, 2, service, current_user=SimpleNamespace(id=7)).status_code, 204)
 
         self.assertEqual(
             rbac_api._service_error_to_http_exception(RoleNotFoundError()).status_code,
@@ -519,6 +562,7 @@ class ApplicationTests(unittest.TestCase):
             limit=25,
         )
         self.assertIs(documents_api.get_document(3, service, user), document)
+        service.get_document.assert_called_once_with(3, audit_actor_user_id=user.id)
         self.assertIs(
             documents_api.rename_document(
                 3,
@@ -528,7 +572,13 @@ class ApplicationTests(unittest.TestCase):
             ),
             document,
         )
+        service.rename_document.assert_called_once_with(
+            3,
+            "Updated title",
+            actor_user_id=user.id,
+        )
         self.assertEqual(documents_api.delete_document(3, service, user).status_code, 204)
+        service.delete_document.assert_called_once_with(3, actor_user_id=user.id)
 
         service.upload.side_effect = DocumentValidationError()
         with self.assertRaises(HTTPException) as context:

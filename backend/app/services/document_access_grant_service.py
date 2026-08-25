@@ -9,10 +9,13 @@ from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import UserNotFoundError
 from app.models.document_access_grant import DocumentAccessGrant
 from app.models.document_access_grant import DocumentAccessLevel
+from app.models.audit_event import AuditEventOutcome
+from app.models.audit_event import AuditEventType
 from app.repositories.document_access_grant_repository import DocumentAccessGrantRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.user_repository import UserRepository
 from app.services.document_access_policy_service import DocumentAccessPolicyService
+from app.services.audit_event_service import AuditEventService
 
 
 class DocumentAccessGrantService:
@@ -24,6 +27,7 @@ class DocumentAccessGrantService:
         self.grants = DocumentAccessGrantRepository(db)
         self.users = UserRepository(db)
         self.access_policy = DocumentAccessPolicyService(db)
+        self.audit_events = AuditEventService(db)
 
     def list_grants(self, *, actor_user_id: int, document_id: int) -> list[DocumentAccessGrant]:
         self._require_manage_access(actor_user_id=actor_user_id, document_id=document_id)
@@ -53,7 +57,9 @@ class DocumentAccessGrantService:
             document_id=document_id,
             user_id=grantee_user_id,
         )
-        if grant is None:
+        is_new = grant is None
+        previous_access_level = grant.access_level if grant is not None else None
+        if is_new:
             grant = self.grants.create(
                 DocumentAccessGrant(
                     document_id=document_id,
@@ -66,6 +72,21 @@ class DocumentAccessGrantService:
             grant.access_level = access_level
             grant.granted_by_user_id = actor_user_id
             self.grants.update()
+        metadata = {"access_level": access_level.value}
+        if previous_access_level is not None:
+            metadata["previous_access_level"] = previous_access_level.value
+        self.audit_events.record(
+            event_type=(
+                AuditEventType.DOCUMENT_ACCESS_GRANT_CREATED
+                if is_new
+                else AuditEventType.DOCUMENT_ACCESS_GRANT_UPDATED
+            ),
+            outcome=AuditEventOutcome.SUCCEEDED,
+            actor_user_id=actor_user_id,
+            target_type="document",
+            target_id=document.id,
+            metadata=metadata,
+        )
         self._commit()
         return grant
 
@@ -86,7 +107,16 @@ class DocumentAccessGrantService:
         )
         if grant is None:
             raise DocumentAccessGrantNotFoundError()
+        access_level = grant.access_level
         self.grants.delete(grant)
+        self.audit_events.record(
+            event_type=AuditEventType.DOCUMENT_ACCESS_GRANT_REVOKED,
+            outcome=AuditEventOutcome.SUCCEEDED,
+            actor_user_id=actor_user_id,
+            target_type="document",
+            target_id=document_id,
+            metadata={"access_level": access_level.value},
+        )
         self._commit()
 
     def _require_manage_access(self, *, actor_user_id: int, document_id: int) -> None:

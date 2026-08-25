@@ -36,6 +36,14 @@ class _ChatProviderStub:
         pass
 
 
+class _AuditEventsStub:
+    def __init__(self) -> None:
+        self.events = []
+
+    def record_best_effort(self, **kwargs) -> None:
+        self.events.append(kwargs)
+
+
 class RagChatServiceTests(unittest.TestCase):
     def _result(self) -> RetrievalSearchResult:
         return RetrievalSearchResult(
@@ -49,7 +57,7 @@ class RagChatServiceTests(unittest.TestCase):
             score=0.91,
         )
 
-    def _service(self, items, fragments: tuple[str, ...]):
+    def _service(self, items, fragments: tuple[str, ...], audit_events=None):
         retrieval = _RetrievalStub(RetrievalSearchResponse(items=items, limit=6))
         provider = _ChatProviderStub(fragments)
         return (
@@ -58,6 +66,7 @@ class RagChatServiceTests(unittest.TestCase):
                 prompt_builder=GroundedPromptBuilder(1_000),
                 chat_provider=provider,
                 citation_validator=CitationValidator(),
+                audit_events=audit_events,
             ),
             retrieval,
             provider,
@@ -113,3 +122,15 @@ class RagChatServiceTests(unittest.TestCase):
                 service, _, _ = self._service([self._result()], fragments)
                 with self.assertRaises(RagChatServiceError):
                     list(service.stream(ChatStreamRequest(question="Question"), user_id=33))
+
+    def test_records_chat_outcomes_without_question_or_answer_content(self) -> None:
+        audit_events = _AuditEventsStub()
+        service, _, _ = self._service([self._result()], ("Verified [S1].",), audit_events)
+
+        list(service.stream(ChatStreamRequest(question="Sensitive question"), user_id=31))
+
+        self.assertEqual(len(audit_events.events), 1)
+        event = audit_events.events[0]
+        self.assertEqual(event["actor_user_id"], 31)
+        self.assertEqual(event["metadata"], {"result_count": 1})
+        self.assertNotIn("question", event)

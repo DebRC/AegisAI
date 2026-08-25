@@ -152,10 +152,10 @@ def list_documents(
 def get_document(
     document_id: int,
     service: DocumentService = Depends(get_document_service),
-    _: User = Depends(require_document_read_access),
+    current_user: User = Depends(require_document_read_access),
 ) -> DocumentResponse:
     try:
-        return service.get_document(document_id)
+        return service.get_document(document_id, audit_actor_user_id=current_user.id)
     except DocumentNotFoundError as error:
         raise _document_error_to_http_exception(error) from error
 
@@ -225,10 +225,10 @@ def list_document_chunks(
 def reprocess_document(
     document_id: int,
     service: DocumentExtractionQueryService = Depends(get_document_extraction_query_service),
-    _: User = Depends(require_document_write_access),
+    current_user: User = Depends(require_document_write_access),
 ) -> ProcessingJobResponse:
     try:
-        return service.request_reprocessing(document_id)
+        return service.request_reprocessing(document_id, actor_user_id=current_user.id)
     except (
         DocumentNotFoundError,
         ProcessingJobPersistenceError,
@@ -245,10 +245,14 @@ def rename_document(
     document_id: int,
     request: DocumentRenameRequest,
     service: DocumentService = Depends(get_document_service),
-    _: User = Depends(require_document_write_access),
+    current_user: User = Depends(require_document_write_access),
 ) -> DocumentResponse:
     try:
-        return service.rename_document(document_id, request.title)
+        return service.rename_document(
+            document_id,
+            request.title,
+            actor_user_id=current_user.id,
+        )
     except (
         DocumentValidationError,
         DocumentNotFoundError,
@@ -264,10 +268,10 @@ def rename_document(
 def delete_document(
     document_id: int,
     service: DocumentService = Depends(get_document_service),
-    _: User = Depends(require_document_write_access),
+    current_user: User = Depends(require_document_write_access),
 ) -> Response:
     try:
-        service.delete_document(document_id)
+        service.delete_document(document_id, actor_user_id=current_user.id)
     except (DocumentNotFoundError, DocumentPersistenceError) as error:
         raise _document_error_to_http_exception(error) from error
 

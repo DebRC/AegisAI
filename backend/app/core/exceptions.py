@@ -90,6 +90,10 @@ class DocumentAccessGranteeInactiveError(Exception):
     """Raised when a grant target is not an active local user."""
 
 
+class AuditEventValidationError(Exception):
+    """Raised when code attempts to record unsafe audit-event data."""
+
+
 class ProcessingJobNotFoundError(Exception):
     """Raised when a processing job is absent or belongs to another document."""
 

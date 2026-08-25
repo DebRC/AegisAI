@@ -11,6 +11,9 @@ from app.core.exceptions import DocumentPersistenceError
 from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import DocumentValidationError
 from app.models import Document
+from app.models import AuditEvent
+from app.models import AuditEventOutcome
+from app.models import AuditEventType
 from app.models import DocumentChunk
 from app.models import DocumentExtraction
 from app.models import DocumentStatus
@@ -276,13 +279,30 @@ class DocumentServiceTests(DatabaseTestCase, unittest.TestCase):
         with self.assertRaises(DocumentNotFoundError):
             service.get_document(9999)
 
+    def test_document_metadata_read_records_safe_best_effort_telemetry(self) -> None:
+        service = DocumentService(self.session, self.storage)
+        document = self._upload(service, "security-policy.txt")
+
+        service.get_document(document.id, audit_actor_user_id=self.user.id)
+
+        events = self.session.query(AuditEvent).order_by(AuditEvent.id).all()
+        self.assertEqual(events[-1].event_type, AuditEventType.DOCUMENT_READ)
+        self.assertEqual(events[-1].outcome, AuditEventOutcome.SUCCEEDED)
+        self.assertEqual(events[-1].actor_user_id, self.user.id)
+        self.assertEqual(events[-1].target_id, document.id)
+        self.assertEqual(events[-1].metadata_, {})
+
     def test_rename_and_delete_update_visibility_and_storage(self) -> None:
         service = DocumentService(self.session, self.storage)
         document = self._upload(service, "security-policy.txt")
         stored_path = self.root_path / document.storage_key
 
-        renamed = service.rename_document(document.id, " Updated policy ")
-        service.delete_document(document.id)
+        renamed = service.rename_document(
+            document.id,
+            " Updated policy ",
+            actor_user_id=self.user.id,
+        )
+        service.delete_document(document.id, actor_user_id=self.user.id)
 
         self.assertEqual(renamed.title, "Updated policy")
         self.assertIsNotNone(document.deleted_at)
@@ -290,6 +310,22 @@ class DocumentServiceTests(DatabaseTestCase, unittest.TestCase):
         self.assertEqual(service.list_documents(offset=0, limit=25).items, [])
         with self.assertRaises(DocumentNotFoundError):
             service.get_document(document.id)
+
+        events = self.session.query(AuditEvent).order_by(AuditEvent.id).all()
+        self.assertEqual(
+            [event.event_type for event in events],
+            [
+                AuditEventType.DOCUMENT_UPLOADED,
+                AuditEventType.DOCUMENT_RENAMED,
+                AuditEventType.DOCUMENT_DELETED,
+            ],
+        )
+        self.assertTrue(all(event.outcome == AuditEventOutcome.SUCCEEDED for event in events))
+        self.assertTrue(all(event.actor_user_id == self.user.id for event in events))
+        self.assertTrue(all(event.target_id == document.id for event in events))
+        self.assertEqual(events[0].metadata_, {"content_type": "text/plain"})
+        self.assertEqual(events[1].metadata_, {})
+        self.assertEqual(events[2].metadata_, {})
 
     def test_delete_hides_metadata_when_best_effort_storage_cleanup_fails(self) -> None:
         service = DocumentService(self.session, self.storage)

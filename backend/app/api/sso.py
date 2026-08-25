@@ -27,6 +27,7 @@ from app.services.auth_service import AuthService
 from app.services.sso_account_service import SsoAccountService
 from app.api.dependencies import get_auth_service
 from app.core.exceptions import AuthenticationError
+from app.models.audit_event import AuditEventType
 
 
 router = APIRouter(prefix="/auth/sso", tags=["Single sign-on"])
@@ -85,8 +86,10 @@ def complete_sso(
         return _callback_error(
             provider,
             transactions,
+            auth_service,
             status.HTTP_400_BAD_REQUEST,
             "SSO authorization was not completed",
+            "authorization_not_completed",
         )
 
     try:
@@ -96,50 +99,68 @@ def complete_sso(
             tokens = oauth_provider.exchange_code(code, transaction.code_verifier)
             identity = oauth_provider.get_identity(tokens, transaction.nonce)
         user = accounts.resolve_identity(identity)
-        session = auth_service.issue_session(user)
+        session = auth_service.issue_session(
+            user,
+            success_event_type=AuditEventType.AUTH_SSO_SUCCEEDED,
+            failure_event_type=AuditEventType.AUTH_SSO_FAILED,
+            metadata={"provider": provider.value},
+        )
     except SsoTransactionError as error:
         return _callback_error(
             provider,
             transactions,
+            auth_service,
             status.HTTP_400_BAD_REQUEST,
             str(error),
+            "invalid_transaction",
         )
     except SsoProviderConfigurationError as error:
         return _callback_error(
             provider,
             transactions,
+            auth_service,
             status.HTTP_503_SERVICE_UNAVAILABLE,
             str(error),
+            "provider_configuration",
         )
     except SsoProviderError as error:
         logger.warning("%s SSO provider verification failed: %s", provider.value, error)
         return _callback_error(
             provider,
             transactions,
+            auth_service,
             status.HTTP_502_BAD_GATEWAY,
             "SSO provider verification failed",
+            "provider_rejected",
         )
     except SsoEmailVerificationError:
         return _callback_error(
             provider,
             transactions,
+            auth_service,
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "A verified email address is required to create or link an account",
+            "email_unverified",
         )
     except SsoAccountResolutionError:
         logger.warning("%s SSO account linking conflict", provider.value)
         return _callback_error(
             provider,
             transactions,
+            auth_service,
             status.HTTP_409_CONFLICT,
             "SSO account linking conflict; retry sign-in",
+            "account_resolution",
         )
     except AuthenticationError:
         return _callback_error(
             provider,
             transactions,
+            auth_service,
             status.HTTP_401_UNAUTHORIZED,
             "Inactive user",
+            "inactive_user",
+            record_audit=False,
         )
 
     response = JSONResponse(
@@ -162,9 +183,17 @@ def _code_challenge(code_verifier: str) -> str:
 def _callback_error(
     provider: ProviderName,
     transactions: SsoTransactionManager,
+    auth_service: AuthService,
     status_code: int,
     detail: str,
+    failure_category: str,
+    record_audit: bool = True,
 ) -> JSONResponse:
+    if record_audit:
+        auth_service.record_sso_failure(
+            provider=provider.value,
+            failure_category=failure_category,
+        )
     response = _error_response(status_code, detail)
     _clear_transaction_cookie(response, provider, transactions)
     return response

@@ -6,6 +6,8 @@ from app.core.exceptions import DocumentExtractionNotFoundError
 from app.core.exceptions import DocumentNotFoundError
 from app.core.exceptions import ProcessingJobStateError
 from app.models import Document
+from app.models import AuditEvent
+from app.models import AuditEventType
 from app.models import DocumentChunk
 from app.models import DocumentExtraction
 from app.models import DocumentStatus
@@ -73,13 +75,21 @@ class DocumentExtractionQueryServiceTests(DatabaseTestCase, unittest.TestCase):
             self.service.get_extraction(new_document.id)
 
     def test_reprocess_queues_one_text_job_and_preserves_ready_state(self) -> None:
-        job = self.service.request_reprocessing(self.document.id)
+        job = self.service.request_reprocessing(
+            self.document.id,
+            actor_user_id=self.user.id,
+        )
 
         self.assertEqual(job.job_type, ProcessingJobService.TEXT_EXTRACTION_JOB_TYPE)
         self.assertEqual(job.status, ProcessingJobStatus.QUEUED)
         self.assertEqual(job.outbox_events[0].status, ProcessingOutboxEventStatus.PENDING)
         self.assertEqual(self.document.status, DocumentStatus.READY)
         self.assertEqual(self.service.get_extraction(self.document.id).id, self.extraction.id)
+        event = self.session.query(AuditEvent).one()
+        self.assertEqual(event.event_type, AuditEventType.DOCUMENT_REPROCESS_QUEUED)
+        self.assertEqual(event.actor_user_id, self.user.id)
+        self.assertEqual(event.target_id, self.document.id)
+        self.assertEqual(event.metadata_, {})
 
         with self.assertRaises(ProcessingJobStateError):
             self.service.request_reprocessing(self.document.id)
