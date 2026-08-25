@@ -78,6 +78,15 @@ Phase 13 does not add a UI, event editing/deletion, long-term retention,
 external SIEM export, tenant-scoped audit partitioning, client IP capture, or
 full distributed tracing. Those belong to Phases 14, 16, 19, and 20.
 
+## Audit-query API
+
+`GET /audit-events` is read-only and requires `audit:read`; the migration grants
+that permission to the system `administrator` role. It supports bounded
+pagination plus allow-listed filters: `actor_user_id`, `event_type`, `outcome`,
+`target_type` / `target_id`, and an inclusive UTC time window
+(`occurred_after`, `occurred_before`). It never accepts metadata-query filters,
+and it exposes no mutation endpoint.
+
 ## Delivery checkpoints
 
 - [x] 13.1 Audit policy and event taxonomy
@@ -86,5 +95,5 @@ full distributed tracing. Those belong to Phases 14, 16, 19, and 20.
 - [x] 13.4 Authentication and RBAC events
 - [x] 13.5 Document and sharing events
 - [x] 13.6 Retrieval and RAG access events
-- [ ] 13.7 Protected audit-query API
+- [x] 13.7 Protected audit-query API
 - [ ] 13.8 Tests, Docker verification, and documentation

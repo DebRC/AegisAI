@@ -14,6 +14,7 @@ from app.integrations.sso.factory import SsoProviderFactory
 from app.security.sso_transactions import SsoTransactionManager
 from app.services.auth_service import AuthService
 from app.services.audit_event_service import AuditEventService
+from app.services.audit_query_service import AuditQueryService
 from app.services.document_service import DocumentService
 from app.services.document_access_policy_service import DocumentAccessPolicyService
 from app.services.document_access_grant_service import DocumentAccessGrantService
@@ -46,6 +47,12 @@ def get_audit_event_service(
     db: Session = Depends(get_db),
 ) -> AuditEventService:
     return AuditEventService(db)
+
+
+def get_audit_query_service(
+    db: Session = Depends(get_db),
+) -> AuditQueryService:
+    return AuditQueryService(db)
 
 
 def get_document_storage() -> DocumentStorage:

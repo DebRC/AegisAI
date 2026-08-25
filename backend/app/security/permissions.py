@@ -12,6 +12,7 @@ class PermissionCode(str, Enum):
     ROLES_READ = "roles:read"
     ROLES_MANAGE = "roles:manage"
     ROLES_ASSIGN = "roles:assign"
+    AUDIT_READ = "audit:read"
 
     @classmethod
     def values(cls) -> tuple[str, ...]:
@@ -27,6 +28,7 @@ PERMISSION_DESCRIPTIONS: dict[PermissionCode, str] = {
     PermissionCode.ROLES_READ: "View roles and their permissions.",
     PermissionCode.ROLES_MANAGE: "Create, update, and delete roles.",
     PermissionCode.ROLES_ASSIGN: "Assign and remove user roles.",
+    PermissionCode.AUDIT_READ: "View the immutable security audit trail.",
 }
 
 SYSTEM_ADMIN_ROLE_NAME = "administrator"
