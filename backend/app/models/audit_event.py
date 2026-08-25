@@ -73,7 +73,6 @@ class AuditEvent(Base):
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
     )
-
     event_type: Mapped[AuditEventType] = mapped_column(
         SqlEnum(
             AuditEventType,
@@ -83,7 +82,6 @@ class AuditEvent(Base):
         ),
         nullable=False,
     )
-
     outcome: Mapped[AuditEventOutcome] = mapped_column(
         SqlEnum(
             AuditEventOutcome,
@@ -93,13 +91,11 @@ class AuditEvent(Base):
         ),
         nullable=False,
     )
-
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
-
     target_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     target_id: Mapped[int | None] = mapped_column(nullable=True)
     metadata_: Mapped[dict[str, object]] = mapped_column("metadata", JSON, default=dict, nullable=False)

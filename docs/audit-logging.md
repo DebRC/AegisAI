@@ -82,7 +82,7 @@ full distributed tracing. Those belong to Phases 14, 16, 19, and 20.
 
 - [x] 13.1 Audit policy and event taxonomy
 - [x] 13.2 Audit-event model and Alembic migration
-- [ ] 13.3 Repository and audit service
+- [x] 13.3 Repository and audit service
 - [ ] 13.4 Authentication and RBAC events
 - [ ] 13.5 Document and sharing events
 - [ ] 13.6 Retrieval and RAG access events
