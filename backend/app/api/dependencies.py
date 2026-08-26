@@ -14,6 +14,7 @@ from app.integrations.sso.factory import SsoProviderFactory
 from app.security.sso_transactions import SsoTransactionManager
 from app.services.auth_service import AuthService
 from app.services.admin_user_service import AdminUserService
+from app.services.admin_rbac_service import AdminRbacService
 from app.services.audit_event_service import AuditEventService
 from app.services.audit_query_service import AuditQueryService
 from app.services.document_service import DocumentService
@@ -42,6 +43,12 @@ def get_admin_user_service(
     db: Session = Depends(get_db),
 ) -> AdminUserService:
     return AdminUserService(db)
+
+
+def get_admin_rbac_service(
+    db: Session = Depends(get_db),
+) -> AdminRbacService:
+    return AdminRbacService(db)
 
 
 def get_rbac_service(

@@ -15,6 +15,7 @@ try:
     from app.api.chat import router as chat_router
     from app.api.audit_events import router as audit_events_router
     from app.api.admin_users import router as admin_users_router
+    from app.api.admin_rbac import router as admin_rbac_router
     from app.core.config import settings
     from app.core.logging import logger
 except ModuleNotFoundError as exc:
@@ -32,6 +33,7 @@ except ModuleNotFoundError as exc:
     from app.api.chat import router as chat_router
     from app.api.audit_events import router as audit_events_router
     from app.api.admin_users import router as admin_users_router
+    from app.api.admin_rbac import router as admin_rbac_router
     from core.config import settings
     from core.logging import logger
 
@@ -59,6 +61,7 @@ app.include_router(retrieval_router)
 app.include_router(chat_router)
 app.include_router(audit_events_router)
 app.include_router(admin_users_router)
+app.include_router(admin_rbac_router)
 
 @app.get("/")
 def root():

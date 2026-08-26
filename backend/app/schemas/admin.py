@@ -34,3 +34,19 @@ class AdminUserListResponse(BaseModel):
 
 class AdminUserStatusRequest(BaseModel):
     is_active: bool
+
+
+class AdminRoleResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    is_system: bool
+    permission_codes: list[str]
+    user_count: int
+
+
+class AdminPermissionResponse(BaseModel):
+    id: int
+    code: str
+    description: str
+    role_count: int

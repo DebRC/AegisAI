@@ -65,7 +65,7 @@ than inferred from ownership.
 - [x] 14.1 Administrative contract and boundaries
 - [x] 14.2 Administrator authorization boundary
 - [x] 14.3 User administration
-- [ ] 14.4 Role and permission administration refinement
+- [x] 14.4 Role and permission administration refinement
 - [ ] 14.5 Document administration
 - [ ] 14.6 Processing-job operations
 - [ ] 14.7 Audit and operational overview
