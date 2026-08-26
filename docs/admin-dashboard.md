@@ -69,4 +69,30 @@ than inferred from ownership.
 - [x] 14.5 Document administration
 - [x] 14.6 Processing-job operations
 - [x] 14.7 Audit and operational overview
-- [ ] 14.8 Tests, Docker verification, and documentation
+- [x] 14.8 Tests, Docker verification, and documentation
+
+## Manual verification
+
+After `docker compose up --build`, use an administrator access token to inspect
+the control plane. The API is available in `/docs`.
+
+```bash
+curl http://localhost:8000/admin/overview \
+  -H "Authorization: Bearer $OWNER_ACCESS_TOKEN"
+
+curl "http://localhost:8000/admin/users?is_active=true&limit=25" \
+  -H "Authorization: Bearer $OWNER_ACCESS_TOKEN"
+
+curl http://localhost:8000/admin/roles \
+  -H "Authorization: Bearer $OWNER_ACCESS_TOKEN"
+
+curl "http://localhost:8000/admin/documents?status=failed" \
+  -H "Authorization: Bearer $OWNER_ACCESS_TOKEN"
+
+curl "http://localhost:8000/admin/processing-jobs?status=failed" \
+  -H "Authorization: Bearer $OWNER_ACCESS_TOKEN"
+```
+
+Retry only a failed job and cancel only a running job; invalid transitions
+return `409`. Test user deactivation only with a separate account because
+self-deactivation is rejected and an inactive user cannot use protected APIs.
