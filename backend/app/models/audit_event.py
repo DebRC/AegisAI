@@ -42,6 +42,8 @@ class AuditEventType(str, Enum):
     RBAC_ROLE_PERMISSION_REVOKED = "rbac.role_permission.revoked"
     RBAC_USER_ROLE_ASSIGNED = "rbac.user_role.assigned"
     RBAC_USER_ROLE_REMOVED = "rbac.user_role.removed"
+    ADMIN_USER_ACTIVATED = "admin.user.activated"
+    ADMIN_USER_DEACTIVATED = "admin.user.deactivated"
     DOCUMENT_UPLOADED = "document.uploaded"
     DOCUMENT_RENAMED = "document.renamed"
     DOCUMENT_DELETED = "document.deleted"

@@ -30,6 +30,10 @@ class UserNotFoundError(Exception):
     """Raised when an RBAC operation references an unknown user."""
 
 
+class AdministratorSelfDeactivationError(Exception):
+    """Raised when an administrator tries to disable their own current account."""
+
+
 class RoleAlreadyExistsError(Exception):
     """Raised when a role with the given name already exists."""
 
