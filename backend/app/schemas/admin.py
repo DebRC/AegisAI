@@ -72,3 +72,10 @@ class AdminDocumentListResponse(BaseModel):
     offset: int
     limit: int
     total: int
+
+class AdminOverviewResponse(BaseModel):
+    total_users: int
+    active_users: int
+    documents_by_status: dict[str, int]
+    jobs_by_status: dict[str, int]
+    recent_event_count: int

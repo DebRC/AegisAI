@@ -68,5 +68,5 @@ than inferred from ownership.
 - [x] 14.4 Role and permission administration refinement
 - [x] 14.5 Document administration
 - [x] 14.6 Processing-job operations
-- [ ] 14.7 Audit and operational overview
+- [x] 14.7 Audit and operational overview
 - [ ] 14.8 Tests, Docker verification, and documentation

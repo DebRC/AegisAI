@@ -18,6 +18,7 @@ try:
     from app.api.admin_rbac import router as admin_rbac_router
     from app.api.admin_documents import router as admin_documents_router
     from app.api.admin_processing_jobs import router as admin_processing_jobs_router
+    from app.api.admin_overview import router as admin_overview_router
     from app.core.config import settings
     from app.core.logging import logger
 except ModuleNotFoundError as exc:
@@ -38,6 +39,7 @@ except ModuleNotFoundError as exc:
     from app.api.admin_rbac import router as admin_rbac_router
     from app.api.admin_documents import router as admin_documents_router
     from app.api.admin_processing_jobs import router as admin_processing_jobs_router
+    from app.api.admin_overview import router as admin_overview_router
     from core.config import settings
     from core.logging import logger
 
@@ -68,6 +70,7 @@ app.include_router(admin_users_router)
 app.include_router(admin_rbac_router)
 app.include_router(admin_documents_router)
 app.include_router(admin_processing_jobs_router)
+app.include_router(admin_overview_router)
 
 @app.get("/")
 def root():
