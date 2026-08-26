@@ -14,6 +14,11 @@ try:
     from app.api.retrieval import router as retrieval_router
     from app.api.chat import router as chat_router
     from app.api.audit_events import router as audit_events_router
+    from app.api.admin_users import router as admin_users_router
+    from app.api.admin_rbac import router as admin_rbac_router
+    from app.api.admin_documents import router as admin_documents_router
+    from app.api.admin_processing_jobs import router as admin_processing_jobs_router
+    from app.api.admin_overview import router as admin_overview_router
     from app.core.config import settings
     from app.core.logging import logger
 except ModuleNotFoundError as exc:
@@ -30,6 +35,11 @@ except ModuleNotFoundError as exc:
     from app.api.retrieval import router as retrieval_router
     from app.api.chat import router as chat_router
     from app.api.audit_events import router as audit_events_router
+    from app.api.admin_users import router as admin_users_router
+    from app.api.admin_rbac import router as admin_rbac_router
+    from app.api.admin_documents import router as admin_documents_router
+    from app.api.admin_processing_jobs import router as admin_processing_jobs_router
+    from app.api.admin_overview import router as admin_overview_router
     from core.config import settings
     from core.logging import logger
 
@@ -56,6 +66,11 @@ app.include_router(document_access_grants_router)
 app.include_router(retrieval_router)
 app.include_router(chat_router)
 app.include_router(audit_events_router)
+app.include_router(admin_users_router)
+app.include_router(admin_rbac_router)
+app.include_router(admin_documents_router)
+app.include_router(admin_processing_jobs_router)
+app.include_router(admin_overview_router)
 
 @app.get("/")
 def root():

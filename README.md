@@ -47,7 +47,9 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 10 — Retrieval and metadata filtering | Complete | Query embedding, safe Qdrant search, controlled filters, PostgreSQL authority checks, deterministic ranking, and RBAC-protected search API. |
 | Phase 11 — RAG chat, streaming, and citations | Complete | RBAC-protected streaming answers, bounded untrusted client history, verified citations, safe failures, and no persisted transcript. |
 | Phase 12 — Permission-aware retrieval | Complete | Direct document sharing filters document APIs, retrieval, RAG context, and citations; tenant isolation remains Phase 19. |
-| Phases 13–16 — Governance and product operations | Planned | Audit logging, administration UI, web frontend, and observability. |
+| Phase 13 — Audit logging | Complete | Append-only security events, privacy-safe read telemetry, and protected audit queries. |
+| Phase 14 — Administration control plane | Complete | Secure APIs for users, RBAC summaries, document/job operations, and operational overview. |
+| Phases 15–16 — Product operations | Planned | Next.js web frontend and observability. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
 
 ### Engineering documents
@@ -61,6 +63,8 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [RAG chat and citations design](docs/rag-chat-and-citations.md) defines the implemented Phase 11 grounding, streaming, citation, and verification contract.
 - [Permission-aware retrieval design](docs/permission-aware-retrieval.md) defines the implemented Phase 12 document-access policy, sharing API, and verification contract.
 - [Audit logging design](docs/audit-logging.md) defines the active Phase 13 event policy, data-minimization rules, and delivery checkpoints.
+- [Administrative control-plane design](docs/admin-dashboard.md) defines the implemented Phase 14 permissions, routes, safety boundaries, and verification workflow.
+- [Administrative control-plane design](docs/admin-dashboard.md) defines the Phase 14 authorization, safety, and API boundaries before administration routes are added.
 
 ## Architecture
 

@@ -47,6 +47,18 @@ class ProcessingJobRepository:
             )
         )
 
+    def list_for_administration(self, *, offset: int, limit: int, status: ProcessingJobStatus | None) -> list[ProcessingJob]:
+        statement = select(ProcessingJob)
+        if status is not None:
+            statement = statement.where(ProcessingJob.status == status)
+        return list(self.db.scalars(statement.order_by(ProcessingJob.created_at.desc(), ProcessingJob.id.desc()).offset(offset).limit(limit)))
+
+    def count_for_administration(self, *, status: ProcessingJobStatus | None) -> int:
+        statement = select(ProcessingJob)
+        if status is not None:
+            statement = statement.where(ProcessingJob.status == status)
+        return self.db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+
     def get_latest_by_document_and_type(
         self,
         *,

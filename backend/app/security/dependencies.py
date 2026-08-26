@@ -28,6 +28,17 @@ access_token_bearer = HTTPBearer(
 )
 
 
+_ADMINISTRATION_PERMISSIONS = frozenset({
+    PermissionCode.USERS_READ,
+    PermissionCode.USERS_MANAGE,
+    PermissionCode.ROLES_READ,
+    PermissionCode.ROLES_MANAGE,
+    PermissionCode.ROLES_ASSIGN,
+    PermissionCode.DOCUMENTS_MANAGE,
+    PermissionCode.AUDIT_READ,
+})
+
+
 def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -90,3 +101,10 @@ def require_permission(permission: PermissionCode):
         return current_user
 
     return dependency
+
+
+def require_administration_permission(permission: PermissionCode):
+    """Return the normal RBAC guard only for approved admin capabilities."""
+    if permission not in _ADMINISTRATION_PERMISSIONS:
+        raise ValueError("Administrative routes require an administration permission")
+    return require_permission(permission)
