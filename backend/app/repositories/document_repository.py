@@ -59,5 +59,26 @@ class DocumentRepository:
             .where(Document.deleted_at.is_(None))
         ) or 0
 
+    def list_for_administration(
+        self, *, offset: int, limit: int, status: str | None, uploader_user_id: int | None
+    ) -> list[Document]:
+        statement = self._administration_statement(status=status, uploader_user_id=uploader_user_id)
+        return list(self.db.scalars(
+            statement.order_by(Document.created_at.desc(), Document.id.desc()).offset(offset).limit(limit)
+        ))
+
+    def count_for_administration(self, *, status: str | None, uploader_user_id: int | None) -> int:
+        statement = self._administration_statement(status=status, uploader_user_id=uploader_user_id)
+        return self.db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+
+    @staticmethod
+    def _administration_statement(*, status: str | None, uploader_user_id: int | None):
+        statement = select(Document)
+        if status is not None:
+            statement = statement.where(Document.status == status)
+        if uploader_user_id is not None:
+            statement = statement.where(Document.uploader_user_id == uploader_user_id)
+        return statement
+
     def update(self) -> None:
         self.db.flush()

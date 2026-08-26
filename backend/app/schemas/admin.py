@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 from pydantic import ConfigDict
+from app.models.document import DocumentStatus
 
 
 class AdminUserRoleResponse(BaseModel):
@@ -50,3 +51,24 @@ class AdminPermissionResponse(BaseModel):
     code: str
     description: str
     role_count: int
+
+class AdminDocumentResponse(BaseModel):
+    id: int
+    uploader_user_id: int
+    title: str
+    original_filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    status: DocumentStatus
+    processing_error: str | None
+    deleted_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class AdminDocumentListResponse(BaseModel):
+    items: list[AdminDocumentResponse]
+    offset: int
+    limit: int
+    total: int
