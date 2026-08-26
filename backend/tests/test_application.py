@@ -228,6 +228,13 @@ class ApplicationTests(unittest.TestCase):
         guard = dependencies.require_permission(PermissionCode.ROLES_READ)
         self.assertIs(guard(active_user, allowed_database), active_user)
 
+        admin_guard = dependencies.require_administration_permission(
+            PermissionCode.AUDIT_READ
+        )
+        self.assertIs(admin_guard(active_user, allowed_database), active_user)
+        with self.assertRaises(ValueError):
+            dependencies.require_administration_permission(PermissionCode.DOCUMENTS_READ)
+
     def test_document_routes_require_expected_permissions(self) -> None:
         expected_permissions = {
             ("/documents", "POST"): PermissionCode.DOCUMENTS_WRITE,

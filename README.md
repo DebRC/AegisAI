@@ -61,6 +61,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [RAG chat and citations design](docs/rag-chat-and-citations.md) defines the implemented Phase 11 grounding, streaming, citation, and verification contract.
 - [Permission-aware retrieval design](docs/permission-aware-retrieval.md) defines the implemented Phase 12 document-access policy, sharing API, and verification contract.
 - [Audit logging design](docs/audit-logging.md) defines the active Phase 13 event policy, data-minimization rules, and delivery checkpoints.
+- [Administrative control-plane design](docs/admin-dashboard.md) defines the Phase 14 authorization, safety, and API boundaries before administration routes are added.
 
 ## Architecture
 
