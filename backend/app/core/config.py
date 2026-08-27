@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     # credentials for at least one provider.
     SSO_ENABLED: bool = False
     SSO_CALLBACK_BASE_URL: str = "http://localhost:8000"
+    # When configured, a verified browser SSO callback stores the AegisAI
+    # session in HttpOnly cookies and redirects to this frontend origin.
+    SSO_FRONTEND_REDIRECT_URL: str = ""
     SSO_STATE_SECRET_KEY: str = ""
     SSO_TRANSACTION_EXPIRE_MINUTES: int = 5
 
