@@ -3,6 +3,7 @@ import unittest
 from datetime import datetime
 from datetime import timezone
 from unittest.mock import Mock
+from unittest.mock import patch
 
 from starlette.requests import Request
 
@@ -144,6 +145,38 @@ class SsoRouteTests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(response.headers["pragma"], "no-cache")
         self.assertIn("Max-Age=0", response.headers["set-cookie"])
+
+    def test_complete_sso_redirects_to_the_frontend_with_http_only_session_cookies(self) -> None:
+        transaction = self.transactions.create(ProviderName.GITHUB)
+        request = request_with_cookie(
+            self.transactions.cookie_name(ProviderName.GITHUB),
+            self.transactions.encode(transaction),
+        )
+
+        with patch.object(sso_api.settings, "SSO_FRONTEND_REDIRECT_URL", "http://localhost:3000"):
+            response = sso_api.complete_sso(
+                ProviderName.GITHUB,
+                request,
+                transaction.state,
+                "authorization-code",
+                None,
+                self.factory,
+                self.transactions,
+                self.accounts,
+                self.auth_service,
+            )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "http://localhost:3000/login?provider=github")
+        cookies = "\n".join(
+            value.decode()
+            for key, value in response.raw_headers
+            if key == b"set-cookie"
+        )
+        self.assertIn("aegis_access_token=access-token", cookies)
+        self.assertIn("aegis_refresh_token=refresh-token", cookies)
+        self.assertIn("HttpOnly", cookies)
+        self.assertNotIn("access-token", response.headers["location"])
 
     def test_complete_sso_rejects_identity_without_a_verified_email(self) -> None:
         transaction = self.transactions.create(ProviderName.GITHUB)

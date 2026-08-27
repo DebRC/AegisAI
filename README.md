@@ -20,6 +20,7 @@ The backend foundation, document ingestion, background processing, text processi
 | Vector indexing | Available | Workers queue and process OpenAI embeddings into validated Qdrant collections with traceable PostgreSQL records, cleanup, and safe progress visibility. |
 | Semantic retrieval | Available | Bounded metadata-filtered search validates Qdrant candidates against current PostgreSQL documents, chunks, and embedding records. |
 | RAG chat | Available | RBAC-protected RAG chat streams grounded answers and verified citations, with bounded client-supplied history. |
+| Web application | Available locally | Next.js browser workspace for authentication, documents, search, grounded chat, and administration; FastAPI remains authoritative. |
 
 Qdrant is already provisioned as local infrastructure. Phase 6 stores original document bytes in the persistent local `document_data` volume and metadata in PostgreSQL; Phase 9.6 automatically indexes document vectors after extraction when `OPENAI_API_KEY` is configured.
 
@@ -28,6 +29,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Area | Technology |
 | --- | --- |
 | API | FastAPI and Uvicorn |
+| Web application | Next.js 16, React, and TypeScript |
 | Application and data layer | Python 3.12, SQLAlchemy 2.x, Alembic |
 | Relational database | PostgreSQL 16 |
 | Vector database | Qdrant |
@@ -49,7 +51,8 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 12 — Permission-aware retrieval | Complete | Direct document sharing filters document APIs, retrieval, RAG context, and citations; tenant isolation remains Phase 19. |
 | Phase 13 — Audit logging | Complete | Append-only security events, privacy-safe read telemetry, and protected audit queries. |
 | Phase 14 — Administration control plane | Complete | Secure APIs for users, RBAC summaries, document/job operations, and operational overview. |
-| Phases 15–16 — Product operations | Planned | Next.js web frontend and observability. |
+| Phase 15 — Next.js frontend | Complete | Browser workspace, server-managed sessions, document/search/chat, administration, and full Compose verification are complete. |
+| Phase 16 — Observability | Planned | Structured logs, metrics, health, and operational visibility. |
 | Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
 
 ### Engineering documents
@@ -64,7 +67,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Permission-aware retrieval design](docs/permission-aware-retrieval.md) defines the implemented Phase 12 document-access policy, sharing API, and verification contract.
 - [Audit logging design](docs/audit-logging.md) defines the active Phase 13 event policy, data-minimization rules, and delivery checkpoints.
 - [Administrative control-plane design](docs/admin-dashboard.md) defines the implemented Phase 14 permissions, routes, safety boundaries, and verification workflow.
-- [Administrative control-plane design](docs/admin-dashboard.md) defines the Phase 14 authorization, safety, and API boundaries before administration routes are added.
+- [Frontend design](docs/frontend.md) defines the active Phase 15 browser architecture, session policy, screen map, and safety boundaries.
 
 ## Architecture
 
@@ -201,6 +204,7 @@ When startup completes:
 | Service | URL |
 | --- | --- |
 | API | `http://localhost:8000` |
+| Web application | `http://localhost:3000` |
 | Health check | `http://localhost:8000/health` |
 | Interactive OpenAPI docs | `http://localhost:8000/docs` |
 | PostgreSQL | `localhost:5432` |

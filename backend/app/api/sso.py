@@ -19,6 +19,7 @@ from app.core.exceptions import SsoProviderConfigurationError
 from app.core.exceptions import SsoProviderError
 from app.core.exceptions import SsoTransactionError
 from app.core.logging import logger
+from app.core.config import settings
 from app.integrations.sso.factory import SsoProviderFactory
 from app.integrations.sso.models import ProviderName
 from app.schemas.sso import SsoCallbackResponse
@@ -163,14 +164,39 @@ def complete_sso(
             record_audit=False,
         )
 
-    response = JSONResponse(
+    if settings.SSO_FRONTEND_REDIRECT_URL:
+        response = RedirectResponse(
+            f"{settings.SSO_FRONTEND_REDIRECT_URL.rstrip('/')}/login?provider={provider.value}",
+            status_code=status.HTTP_303_SEE_OTHER,
+            headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+        )
+        cookie_options = {
+            "httponly": True,
+            "secure": transactions.secure_cookie,
+            "samesite": "lax",
+            "path": "/",
+        }
+        response.set_cookie(
+            key="aegis_access_token",
+            value=session.access_token,
+            max_age=session.expires_in,
+            **cookie_options,
+        )
+        response.set_cookie(
+            key="aegis_refresh_token",
+            value=session.refresh_token,
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            **cookie_options,
+        )
+    else:
+        response = JSONResponse(
         status_code=status.HTTP_200_OK,
         content=SsoCallbackResponse(
             **session.model_dump(mode="json"),
             provider=provider,
         ).model_dump(mode="json"),
         headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
-    )
+        )
     _clear_transaction_cookie(response, provider, transactions)
     return response
 

@@ -1,5 +1,22 @@
 services:
 
+  frontend:
+
+    build: ./frontend
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      API_BASE_URL: http://backend:8000
+      SESSION_COOKIE_SECURE: "false"
+      SESSION_REFRESH_COOKIE_MAX_AGE_SECONDS: "604800"
+      NEXT_PUBLIC_APP_NAME: AegisAI
+
+    depends_on:
+      backend:
+        condition: service_started
+
   backend:
 
     build: ./backend
