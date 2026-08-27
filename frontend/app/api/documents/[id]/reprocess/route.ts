@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { AegisApiError, aegisApi } from "../../../../../lib/server/api-client";
+import { requireAccessToken } from "../../../../../lib/server/session";
+export async function POST(_: Request, context: { params: Promise<{ id: string }> }): Promise<NextResponse> { const { id } = await context.params; if (!/^\d+$/.test(id)) return NextResponse.json({ detail: "Document not found" }, { status: 404 }); try { const token = await requireAccessToken(); if (!token) return NextResponse.json({ detail: "Authentication required" }, { status: 401 }); return NextResponse.json(await aegisApi.reprocessDocument(token, Number(id)), { status: 202 }); } catch (error) { return NextResponse.json({ detail: error instanceof AegisApiError ? error.message : "Reprocessing is temporarily unavailable" }, { status: error instanceof AegisApiError ? error.status : 503 }); } }

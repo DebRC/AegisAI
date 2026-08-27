@@ -1,0 +1,13 @@
+"use client";
+import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
+import type { DocumentDetailData } from "../../../lib/api/types";
+
+export default function DocumentPage({ params }: { params: Promise<{ id: string }> }) {
+  const [detail, setDetail] = useState<DocumentDetailData | null>(null); const [message, setMessage] = useState("Loading document…"); const [documentId, setDocumentId] = useState("");
+  async function load(id: string) { const response = await fetch(`/api/documents/${id}`); if (!response.ok) { setMessage("This document is unavailable."); return; } setDetail(await response.json()); setMessage(""); }
+  useEffect(() => { void params.then(({ id }) => { setDocumentId(id); return load(id); }); }, [params]);
+  async function action(path: string, options: RequestInit, success: string) { const response = await fetch(path, options); const payload = await response.json().catch(() => ({})); setMessage(response.ok ? success : typeof payload.detail === "string" ? payload.detail : "Action failed."); if (response.ok && documentId) await load(documentId); }
+  function rename(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const title = new FormData(event.currentTarget).get("title"); void action(`/api/documents/${documentId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) }, "Document renamed."); }
+  return <main className="shell"><section className="hero"><Link href="/documents">← Documents</Link>{!detail ? <p>{message}</p> : <><p className="eyebrow">{detail.document.status}</p><h1>{detail.document.title}</h1><p>{detail.document.original_filename} · {detail.document.content_type}</p><form className="auth-form" onSubmit={rename}><label>Title<input name="title" defaultValue={detail.document.title} required /></label><button className="primary-action">Rename</button></form><p aria-live="polite">{message}</p><button onClick={() => void action(`/api/documents/${documentId}/reprocess`, { method: "POST" }, "Reprocessing queued.")}>Reprocess</button><button onClick={() => void action(`/api/documents/${documentId}`, { method: "DELETE" }, "Document deleted.")}>Delete</button><h2>Processing</h2><p>{detail.jobs.length ? detail.jobs.map((job) => `${job.job_type}: ${job.status}`).join("; ") : "No jobs recorded."}</p><h2>Extraction</h2><p>{detail.extraction ? `${detail.extraction.character_count.toLocaleString()} characters extracted` : "Not available yet."}</p><h2>Indexing</h2><p>{detail.indexing ? `${detail.indexing.indexed_chunks}/${detail.indexing.total_chunks} chunks — ${detail.indexing.indexing_status}` : "Not started."}</p></>}</section></main>;
+}
