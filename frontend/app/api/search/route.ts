@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { AegisApiError, aegisApi } from "../../../lib/server/api-client";
+import { requireAccessToken } from "../../../lib/server/session";
+export async function POST(request: Request): Promise<NextResponse> { const query = (await request.json().catch(() => ({})) as { query?: unknown }).query; if (typeof query !== "string" || !query.trim()) return NextResponse.json({ detail: "Enter a search query" }, { status: 422 }); try { const token = await requireAccessToken(); if (!token) return NextResponse.json({ detail: "Authentication required" }, { status: 401 }); return NextResponse.json(await aegisApi.search(token, query.trim())); } catch (e) { return NextResponse.json({ detail: e instanceof AegisApiError ? e.message : "Semantic search is temporarily unavailable" }, { status: e instanceof AegisApiError ? e.status : 503 }); } }

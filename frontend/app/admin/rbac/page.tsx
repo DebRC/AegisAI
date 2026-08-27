@@ -1,0 +1,4 @@
+"use client";
+import { useEffect, useState } from "react";
+import type { AdminPermission, AdminRole } from "../../../lib/api/types";
+export default function RbacPage() { const [data, setData] = useState<{ roles: AdminRole[]; permissions: AdminPermission[] } | null>(null); useEffect(() => { void fetch("/api/admin/rbac").then(r => r.ok ? r.json().then(setData) : null); }, []); return <main className="shell"><section className="hero"><h1>Roles and permissions</h1>{!data ? <p>Loading RBAC configuration…</p> : <><h2>Roles</h2><ul>{data.roles.map(role => <li key={role.id}><strong>{role.name}</strong> ({role.user_count} users): {role.permission_codes.join(", ")}</li>)}</ul><h2>Permissions</h2><ul>{data.permissions.map(permission => <li key={permission.id}><strong>{permission.code}</strong> — {permission.description}</li>)}</ul></>}</section></main>; }

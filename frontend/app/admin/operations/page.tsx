@@ -1,0 +1,4 @@
+"use client";
+import { useEffect, useState } from "react";
+import type { AdminJob, AuditEvent } from "../../../lib/api/types";
+export default function OperationsPage() { const [data, setData] = useState<{ jobs: AdminJob[]; audit: AuditEvent[] } | null>(null); useEffect(() => { void fetch("/api/admin/operations").then(r => r.ok ? r.json().then(setData) : null); }, []); return <main className="shell"><section className="hero"><h1>Operations</h1>{!data ? <p>Loading operations…</p> : <><h2>Processing jobs</h2><ul>{data.jobs.map(job => <li key={job.id}>#{job.id} document {job.document_id} — {job.job_type}: {job.status} ({job.attempt_count} attempts)</li>)}</ul><h2>Audit events</h2><ul>{data.audit.map(event => <li key={event.id}>{event.occurred_at} — {event.event_type} ({event.outcome})</li>)}</ul></>}</section></main>; }
