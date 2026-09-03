@@ -87,6 +87,9 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v6
 
+      - name: Prepare CI-only Compose configuration
+        run: cp backend/.env.example backend/.env
+
       - name: Validate Compose configuration
         run: docker compose config --quiet
 

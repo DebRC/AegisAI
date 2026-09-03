@@ -87,6 +87,11 @@ frontend images from a clean GitHub-hosted runner. The backend Dockerfile
 already embeds the unit-test and Alembic SQL gates, so this independently proves
 that the container recipe—not just a local virtual environment—remains valid.
 
+Because `backend/.env` is intentionally untracked, the job creates it only
+inside the ephemeral runner from `backend/.env.example`. This enables Compose
+to resolve its declared local service configuration without accessing a real
+credential or changing the repository.
+
 The job builds images but never starts the Compose platform. That prevents CI
 from creating documents, contacting configured AI/SSO providers, or turning a
 pull request into an integration deployment.
