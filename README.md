@@ -53,7 +53,8 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 14 — Administration control plane | Complete | Secure APIs for users, RBAC summaries, document/job operations, and operational overview. |
 | Phase 15 — Next.js frontend | Complete | Browser workspace, server-managed sessions, document/search/chat, administration, and full Compose verification are complete. |
 | Phase 16 — Observability | Complete | Privacy-safe JSON logs and request correlation, safe failure telemetry, liveness/readiness, Prometheus metrics, worker task signals, and operating guidance. |
-| Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
+| Phase 17 — CI/CD | In progress | The delivery contract is defined; automated source, image, migration, and frontend quality gates are next. |
+| Phases 18–20 — Production scale | Planned | Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
 
 ### Engineering documents
 
@@ -69,6 +70,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Administrative control-plane design](docs/admin-dashboard.md) defines the implemented Phase 14 permissions, routes, safety boundaries, and verification workflow.
 - [Frontend design](docs/frontend.md) defines the active Phase 15 browser architecture, session policy, screen map, and safety boundaries.
 - [Observability design](docs/observability.md) defines the active Phase 16 telemetry, privacy, health, and operations contract.
+- [CI/CD design](docs/ci-cd.md) defines the active Phase 17 delivery contract, CI boundaries, and release safeguards.
 
 ## Architecture
 
