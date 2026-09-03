@@ -57,7 +57,24 @@ setting, not something the repository can enable by itself.
 ## Delivery checkpoints
 
 - [x] 17.1 Delivery contract and trust boundaries
-- [ ] 17.2 Backend and frontend continuous integration
+- [x] 17.2 Backend and frontend continuous integration
 - [ ] 17.3 Compose image and migration validation
 - [ ] 17.4 Release artifact and deployment safeguards
 - [ ] 17.5 Workflow verification and operating guide
+
+## 17.2 Continuous integration
+
+`.github/workflows/ci.yml` runs for every push and pull request with read-only
+repository permission. It uses CI-only environment values, installs locked
+dependencies, runs the backend unit suite and offline Alembic SQL validation,
+then type-checks, tests, and produces the frontend bundle. It has no checkout
+of deployment secrets and no publish or deployment step.
+
+The workflow uses the official setup actions' built-in dependency caches for
+pip and npm. Newer commits on the same branch cancel superseded in-progress
+CI runs, which avoids spending runner time on obsolete results.
+
+The frontend runs `tsc --noEmit` as its explicit type gate. Next's production
+build uses its compiler-API mode because the project-local TypeScript CLI can
+finish `--showConfig` before Next attaches its output listener. This avoids a
+false build failure while preserving independent type checking in CI.
