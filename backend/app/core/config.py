@@ -23,6 +23,9 @@ class Settings(BaseSettings):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     QDRANT_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0, le=120)
+    # Readiness must fail quickly instead of holding a load balancer request
+    # while an unavailable local dependency waits for a long network timeout.
+    OBSERVABILITY_DEPENDENCY_TIMEOUT_SECONDS: float = Field(default=1.0, gt=0, le=10)
 
     # Phase 9 starts with OpenAI's text-embedding-3-small at its documented
     # default of 1,536 dimensions. The provider is isolated behind an adapter

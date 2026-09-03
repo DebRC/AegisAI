@@ -1,6 +1,9 @@
 """Shared Celery application used by the worker and scheduler processes."""
 
 from celery import Celery
+from celery.signals import task_postrun, task_failure
+
+from app.core.logging import logger
 
 from app.core.config import settings
 
@@ -35,3 +38,22 @@ def create_celery_app() -> Celery:
 
 
 celery_app = create_celery_app()
+
+
+@task_postrun.connect
+def record_worker_success(sender=None, state=None, **_):
+    if state == "SUCCESS":
+        name = getattr(sender, "name", "unknown")
+        logger.info(
+            "worker_task_completed",
+            extra={"task_name": name, "failure_category": "none"},
+        )
+
+
+@task_failure.connect
+def record_worker_failure(sender=None, **_):
+    name = getattr(sender, "name", "unknown")
+    logger.warning(
+        "worker_task_failed",
+        extra={"task_name": name, "failure_category": "task_failure"},
+    )

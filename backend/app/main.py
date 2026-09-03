@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 try:
     from app.api.health import router as health_router
@@ -21,6 +22,7 @@ try:
     from app.api.admin_overview import router as admin_overview_router
     from app.core.config import settings
     from app.core.logging import logger
+    from app.core.request_logging import log_request
 except ModuleNotFoundError as exc:
     if exc.name != "app":
         raise
@@ -42,6 +44,7 @@ except ModuleNotFoundError as exc:
     from app.api.admin_overview import router as admin_overview_router
     from core.config import settings
     from core.logging import logger
+    from core.request_logging import log_request
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,6 +57,20 @@ app = FastAPI(
     version=settings.APP_VERSION,
     lifespan=lifespan,
 )
+
+app.middleware("http")(log_request)
+
+@app.exception_handler(Exception)
+async def unhandled_exception(request: Request, _: Exception):
+    logger.exception(
+        "unhandled_request_failure",
+        extra={
+            "method": request.method,
+            "route": getattr(request.scope.get("route"), "path", "unmatched"),
+            "failure_category": "unhandled",
+        },
+    )
+    return JSONResponse(status_code=500, content={"detail": "AegisAI is temporarily unavailable"})
 
 app.include_router(health_router)
 app.include_router(database_router)
