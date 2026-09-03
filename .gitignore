@@ -21,3 +21,6 @@ frontend/.next/
 frontend/tsconfig.tsbuildinfo
 frontend/.env
 frontend/.env.local
+
+# Kubernetes production credentials are created locally from the tracked example.
+infrastructure/kubernetes/overlays/production/secrets.env

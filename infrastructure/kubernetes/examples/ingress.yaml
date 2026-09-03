@@ -1,0 +1,27 @@
+# Optional example. Adapt ingressClassName, hostname, TLS issuer/secret, and
+# any cloud-specific annotations before applying it. Only the frontend is
+# public; Next.js calls the backend over the internal ClusterIP service.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aegisai
+  namespace: aegisai
+  labels:
+    app.kubernetes.io/part-of: aegisai
+spec:
+  ingressClassName: replace-with-your-ingress-class
+  tls:
+    - hosts:
+        - aegisai.example.com
+      secretName: aegisai-tls
+  rules:
+    - host: aegisai.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http

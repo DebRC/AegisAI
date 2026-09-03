@@ -8,9 +8,9 @@ the same backend tests, migration validation, image build, and frontend checks
 must run from a clean GitHub-hosted environment.
 
 This phase establishes delivery confidence. It does not silently deploy to an
-environment, create cloud infrastructure, or use production credentials. Those
-actions need an approved deployment target and are deliberately deferred to
-Phase 18.
+environment, create cloud infrastructure, or use production credentials. Phase
+18 supplies the Kubernetes package and its operator-run rollout procedure;
+deployment authority remains an explicit, environment-specific decision.
 
 ## 17.1 Delivery contract and trust boundaries
 
@@ -23,6 +23,7 @@ Phase 18.
 | Backend image build | The Dockerfile's embedded test and migration gates work from a clean image. | None. |
 | Frontend type check and production build | The browser application remains type-safe and can produce its production bundle. | None. |
 | Compose configuration validation | The declared local platform is structurally valid. | None. |
+| Kubernetes Kustomize rendering | The base and each ordered production deployment stage resolve without a cluster or secret. | None. |
 
 The workflow must not call OpenAI, an OAuth provider, a live database, or any
 other external account. Tests use mocks and CI-only configuration so a pull
@@ -36,9 +37,8 @@ request cannot spend API credits or expose a secret.
   database URLs are prohibited from ordinary CI.
 - A future deployment workflow may run only through an explicit manual release
   approval and an environment protected in the source-control provider.
-- Phase 18 will define the deployment target, runtime secrets, rollout,
-  rollback, and Kubernetes-specific checks before any automatic deployment is
-  enabled.
+- Phase 18 defines runtime secret handling, rollout, rollback, and Kubernetes
+  checks. It intentionally does not add automatic deployment.
 
 ### Version and artifact policy
 
@@ -96,6 +96,15 @@ The job builds images but never starts the Compose platform. That prevents CI
 from creating documents, contacting configured AI/SSO providers, or turning a
 pull request into an integration deployment.
 
+## Kubernetes rendering gate
+
+The `kubernetes` job installs `kubectl` with its bundled Kustomize support and
+renders the generic base plus the production `platform`, `migration`, and
+`application` stages. It does not contact a Kubernetes API server, create a
+Secret, read a repository secret, or apply any resource. This catches malformed
+YAML, invalid Kustomize paths, and broken image transformations before an
+operator reaches a cluster.
+
 ## 17.4 Manual release-candidate validation
 
 `release-validation.yml` is deliberately manual. An operator supplies an
@@ -106,8 +115,9 @@ commit, and candidate image identities for a release handoff.
 
 It has read-only repository access and does **not** publish images, use
 repository secrets, deploy an environment, or mutate the Git tag. A registry,
-deployment environment, approval policy, rollout, and rollback design are
-prerequisites for a later Phase 18 deployment workflow.
+deployment environment, and approval policy remain prerequisites for any future
+automated deployment workflow. The current manual Kubernetes rollout and
+rollback procedure is defined in [the Kubernetes guide](kubernetes.md).
 
 ## 17.5 Verification and operator setup
 
@@ -135,10 +145,10 @@ npm run build
 1. Push the commits containing `.github/workflows/ci.yml` to the remote
    repository, then open a pull request or inspect the resulting push run in
    the **Actions** tab.
-2. Confirm these three checks succeed: **Backend tests and migration
+2. Confirm these four checks succeed: **Backend tests and migration
    validation**, **Frontend type, test, and production build**, and **Compose
-   image and migration gates**.
-3. In repository branch-protection settings, require all three checks before a
+   image and migration gates**, and **Kubernetes manifest rendering**.
+3. In repository branch-protection settings, require all four checks before a
    protected-branch merge and require review for workflow-file changes.
 4. To prepare a release candidate, create and push an approved semantic-version
    Git tag, then choose **Release candidate validation** in the Actions tab and

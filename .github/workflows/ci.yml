@@ -95,3 +95,22 @@ jobs:
 
       - name: Build backend and frontend images
         run: docker compose build --pull backend frontend
+
+  kubernetes:
+    name: Kubernetes manifest rendering
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up kubectl with Kustomize
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.32.3
+
+      - name: Render Kubernetes bases and production deployment stages
+        run: |
+          kubectl kustomize infrastructure/kubernetes/base > /tmp/aegisai-base.yaml
+          kubectl kustomize infrastructure/kubernetes/overlays/production/platform > /tmp/aegisai-platform.yaml
+          kubectl kustomize infrastructure/kubernetes/overlays/production/migration > /tmp/aegisai-migration.yaml
+          kubectl kustomize infrastructure/kubernetes/overlays/production/application > /tmp/aegisai-application.yaml

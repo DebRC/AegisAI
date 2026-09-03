@@ -1,0 +1,16 @@
+# The document volume is deliberately ReadWriteMany: API pods and Celery workers
+# must access the same immutable uploaded source. Choose an RWX-capable StorageClass
+# (for example EFS, NFS, or CephFS) in the production overlay or cluster default.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: document-storage
+  labels:
+    app.kubernetes.io/part-of: aegisai
+    app.kubernetes.io/component: document-storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi

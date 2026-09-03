@@ -10,7 +10,7 @@ The backend foundation, document ingestion, background processing, text processi
 
 | Capability | Status | Outcome |
 | --- | --- | --- |
-| API and local platform | Available | FastAPI API, PostgreSQL 16, Qdrant, Docker Compose, health checks, and Alembic migrations. |
+| API and platform | Available | FastAPI API, PostgreSQL 16, Qdrant, Docker Compose local stack, Kubernetes deployment package, health checks, and Alembic migrations. |
 | Local authentication | Available | User registration, bcrypt password hashing, short-lived access JWTs, rotatable refresh tokens, logout, and inactive-user protection. |
 | Authorization | Available | Local roles and permissions, administrator bootstrap, request-time RBAC, and direct document read/write sharing. |
 | Enterprise SSO | Available | Google OpenID Connect, GitHub OAuth, and Microsoft Entra ID adapters with PKCE, signed state, nonce validation, account linking, and local AegisAI sessions. |
@@ -53,8 +53,9 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 14 — Administration control plane | Complete | Secure APIs for users, RBAC summaries, document/job operations, and operational overview. |
 | Phase 15 — Next.js frontend | Complete | Browser workspace, server-managed sessions, document/search/chat, administration, and full Compose verification are complete. |
 | Phase 16 — Observability | Complete | Privacy-safe JSON logs and request correlation, safe failure telemetry, liveness/readiness, Prometheus metrics, worker task signals, and operating guidance. |
-| Phase 17 — CI/CD | Complete | GitHub Actions validates source, migrations, images, and frontend builds; manual release candidates are traceable by tag and commit without deployment authority. |
-| Phases 18–20 — Production scale | Planned | Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
+| Phase 17 — CI/CD | Complete | GitHub Actions validates source, migrations, images, frontend builds, and Kubernetes manifest rendering; manual release candidates are traceable by tag and commit without deployment authority. |
+| Phase 18 — Kubernetes | Complete | Kustomize-based platform, migration, and application rollout stages; persistent storage, probes, resource controls, autoscaling, disruption budgets, and a secure secret handoff. |
+| Phases 19–20 — Enterprise scale | Planned | Multi-tenancy, API keys, rate limits, and retention controls. |
 
 ### Engineering documents
 
@@ -71,6 +72,7 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Frontend design](docs/frontend.md) defines the active Phase 15 browser architecture, session policy, screen map, and safety boundaries.
 - [Observability design](docs/observability.md) defines the active Phase 16 telemetry, privacy, health, and operations contract.
 - [CI/CD design](docs/ci-cd.md) defines the active Phase 17 delivery contract, CI boundaries, and release safeguards.
+- [Kubernetes deployment guide](docs/kubernetes.md) defines the active Phase 18 deployment topology, secret boundary, persistence, rollout order, verification, and rollback safeguards.
 
 ## Architecture
 
@@ -231,7 +233,7 @@ docker compose down
 docker compose up --build --force-recreate
 ```
 
-Docker Compose is the supported local-development workflow. It is not yet a production deployment recipe; production hardening, observability, CI/CD, Kubernetes, and multi-tenancy are planned later.
+Docker Compose is the supported local-development workflow. It is not a production deployment recipe. Phase 18 adds a Kubernetes deployment baseline; it still requires your own cluster, immutable registry images, RWX document storage, secrets, DNS/TLS, and organization-specific data protection before public production use. See the [Kubernetes deployment guide](docs/kubernetes.md).
 
 ## Configuration
 
@@ -526,6 +528,8 @@ When running Alembic from the host, use a database URL reachable from the host�
 │   ├── tests/               # Unit and API-boundary tests
 │   ├── Dockerfile
 │   └── .env.example
+├── infrastructure/
+│   └── kubernetes/         # Phase 18 Kustomize platform, migration, and application stages
 └── docker-compose.yaml      # Local API, PostgreSQL, and Qdrant stack
 ```
 
@@ -547,6 +551,6 @@ The next implementation milestones are:
 3. **Phase 15:** Next.js frontend.
 4. **Phase 16:** observability.
 5. **Phase 17:** CI/CD.
-6. **Phase 18:** Kubernetes.
+6. **Phase 18:** Kubernetes deployment baseline.
 7. **Phase 19:** multi-tenancy.
 8. **Phase 20:** enterprise API keys, rate limits, and retention policies.
