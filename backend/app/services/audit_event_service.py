@@ -10,6 +10,8 @@ from app.models.audit_event import AuditEvent
 from app.models.audit_event import AuditEventOutcome
 from app.models.audit_event import AuditEventType
 from app.repositories.audit_event_repository import AuditEventRepository
+from app.repositories.tenant_repository import TenantRepository
+from app.services.tenant_service import DEFAULT_TENANT_SLUG
 
 
 AuditMetadataValue: TypeAlias = str | int | float | bool | None
@@ -25,6 +27,8 @@ class AuditEventService:
         "role",
         "session",
         "user",
+        "api_key",
+        "retention_policy",
     })
     _METADATA_KEYS = frozenset({
         "access_level",
@@ -35,6 +39,9 @@ class AuditEventService:
         "provider",
         "result_count",
         "role_id",
+        "api_key_prefix",
+        "purged_count",
+        "retention_days",
     })
     _MAX_METADATA_STRING_LENGTH = 128
 
@@ -51,6 +58,7 @@ class AuditEventService:
         target_type: str | None = None,
         target_id: int | None = None,
         metadata: Mapping[str, AuditMetadataValue] | None = None,
+        tenant_id: int | None = None,
     ) -> AuditEvent:
         """Add one safe event without committing the caller's transaction."""
         self._validate_event_type(event_type)
@@ -61,6 +69,7 @@ class AuditEventService:
         return self.events.create(
             AuditEvent(
                 actor_user_id=actor_user_id,
+                tenant_id=tenant_id or self._default_tenant_id(),
                 event_type=event_type,
                 outcome=outcome,
                 target_type=target_type,
@@ -68,6 +77,11 @@ class AuditEventService:
                 metadata_=safe_metadata,
             )
         )
+
+    def _default_tenant_id(self) -> int | None:
+        """Keep legacy call sites safe while explicit request paths pass tenant_id."""
+        tenant = TenantRepository(self.db).get_by_slug(DEFAULT_TENANT_SLUG)
+        return tenant.id if tenant is not None else None
 
     def record_best_effort(self, **kwargs: object) -> None:
         """Persist read telemetry without allowing audit availability to affect access."""

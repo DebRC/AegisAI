@@ -14,6 +14,7 @@ from app.schemas.retrieval import SUPPORTED_RETRIEVAL_CONTENT_TYPES
 
 
 _PAYLOAD_INDEXES: tuple[tuple[str, models.PayloadSchemaType], ...] = (
+    ("tenant_id", models.PayloadSchemaType.INTEGER),
     ("document_id", models.PayloadSchemaType.INTEGER),
     ("chunk_id", models.PayloadSchemaType.INTEGER),
     ("document_extraction_id", models.PayloadSchemaType.INTEGER),
@@ -39,6 +40,7 @@ class QdrantVectorPoint:
     content_type: str
     embedding_provider: str
     embedding_model: str
+    tenant_id: int = 0
 
     def __post_init__(self) -> None:
         try:
@@ -64,6 +66,9 @@ class QdrantVectorPoint:
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{field_name} must be a positive integer")
 
+        if not isinstance(self.tenant_id, int) or self.tenant_id < 0:
+            raise ValueError("tenant_id must be a non-negative integer")
+
         for field_name in ("content_type", "embedding_provider", "embedding_model"):
             value = getattr(self, field_name)
             if not isinstance(value, str) or not value.strip():
@@ -75,7 +80,7 @@ class QdrantVectorPoint:
     @property
     def payload(self) -> dict[str, int | str]:
         """Return the explicit allow-list of safe retrieval metadata."""
-        return {
+        payload: dict[str, int | str] = {
             "document_id": self.document_id,
             "chunk_id": self.chunk_id,
             "document_extraction_id": self.document_extraction_id,
@@ -84,6 +89,9 @@ class QdrantVectorPoint:
             "embedding_provider": self.embedding_provider,
             "embedding_model": self.embedding_model,
         }
+        if self.tenant_id:
+            payload["tenant_id"] = self.tenant_id
+        return payload
 
 
 @dataclass(frozen=True)
@@ -196,6 +204,7 @@ class QdrantVectorStore:
         limit: int,
         document_ids: Sequence[int] | None = None,
         content_types: Sequence[str] | None = None,
+        tenant_id: int | None = None,
     ) -> list[QdrantSearchCandidate]:
         """Return filtered active-identity candidates without creating a collection."""
         if provider != self._configuration_provider or model != self._configuration_model:
@@ -206,6 +215,8 @@ class QdrantVectorStore:
             raise ValueError(f"Qdrant search limit must be between 1 and {_MAX_SEARCH_LIMIT}")
         normalized_document_ids = self._normalize_document_filter(document_ids)
         normalized_content_types = self._normalize_content_type_filter(content_types)
+        if tenant_id is not None and (isinstance(tenant_id, bool) or not isinstance(tenant_id, int) or tenant_id < 1):
+            raise ValueError("tenant_id must be a positive integer")
 
         normalized_vector = self._normalize_search_vector(vector)
         must_conditions = [
@@ -218,6 +229,10 @@ class QdrantVectorStore:
                 match=models.MatchValue(value=model),
             ),
         ]
+        if tenant_id is not None:
+            must_conditions.append(
+                models.FieldCondition(key="tenant_id", match=models.MatchValue(value=tenant_id))
+            )
         if normalized_document_ids is not None:
             must_conditions.append(
                 models.FieldCondition(

@@ -61,23 +61,25 @@ class RagChatService:
         self.citation_validator = citation_validator
         self.audit_events = audit_events
 
-    def stream(self, request: ChatStreamRequest, *, user_id: int) -> Iterator[ChatGenerationEvent]:
+    def stream(self, request: ChatStreamRequest, *, user_id: int, tenant_id: int | None = None) -> Iterator[ChatGenerationEvent]:
         """Retrieve, stream a model answer, then validate its cited source labels."""
         try:
-            retrieval_response = self.retrieval.search(
-                RetrievalSearchRequest(
+            retrieval_request = RetrievalSearchRequest(
                     query=request.question,
                     limit=request.retrieval_limit,
                     document_ids=request.document_ids,
                     content_types=request.content_types,
-                ),
-                user_id=user_id,
+                )
+            retrieval_response = (
+                self.retrieval.search(retrieval_request, user_id=user_id, tenant_id=tenant_id)
+                if tenant_id is not None
+                else self.retrieval.search(retrieval_request, user_id=user_id)
             )
         except Exception:
-            self._record_chat_failure(user_id=user_id)
+            self._record_chat_failure(user_id=user_id, tenant_id=tenant_id)
             raise
         if not retrieval_response.items:
-            self._record_chat_request(user_id=user_id, result_count=0)
+            self._record_chat_request(user_id=user_id, result_count=0, tenant_id=tenant_id)
             yield ChatAnswerFragment(_INSUFFICIENT_CONTEXT_MESSAGE)
             yield ChatCompletion(answered=False, citations=())
             return
@@ -85,33 +87,43 @@ class RagChatService:
         try:
             prompt = self.prompt_builder.build(request.question, retrieval_response.items, request.history)
         except PromptContextError as error:
-            self._record_chat_failure(user_id=user_id)
+            self._record_chat_failure(user_id=user_id, tenant_id=tenant_id)
             raise RagChatServiceError("Verified retrieval context could not form a chat prompt") from error
 
         answer_fragments: list[str] = []
         for text in self.chat_provider.stream(prompt.messages):
             if not isinstance(text, str) or not text:
-                self._record_chat_failure(user_id=user_id)
+                self._record_chat_failure(user_id=user_id, tenant_id=tenant_id)
                 raise RagChatServiceError("Chat provider returned an invalid answer fragment")
             answer_fragments.append(text)
             yield ChatAnswerFragment(text)
 
         answer = "".join(answer_fragments)
         if not answer.strip():
-            self._record_chat_failure(user_id=user_id)
+            self._record_chat_failure(user_id=user_id, tenant_id=tenant_id)
             raise RagChatServiceError("Chat provider returned an empty answer")
         try:
             citations = self.citation_validator.citations_for(answer, prompt)
         except CitationValidationError as error:
-            self._record_chat_failure(user_id=user_id)
+            self._record_chat_failure(user_id=user_id, tenant_id=tenant_id)
             raise RagChatServiceError("Generated answer referenced an unverified source") from error
         if not citations:
-            self._record_chat_failure(user_id=user_id)
+            self._record_chat_failure(user_id=user_id, tenant_id=tenant_id)
             raise RagChatServiceError("Generated answer did not include a verified source citation")
-        self._record_chat_request(user_id=user_id, result_count=len(retrieval_response.items))
+        self._record_chat_request(
+            user_id=user_id,
+            result_count=len(retrieval_response.items),
+            tenant_id=tenant_id,
+        )
         yield ChatCompletion(answered=True, citations=citations)
 
-    def _record_chat_request(self, *, user_id: int, result_count: int) -> None:
+    def _record_chat_request(
+        self,
+        *,
+        user_id: int,
+        result_count: int,
+        tenant_id: int | None = None,
+    ) -> None:
         if self.audit_events is None:
             return
         self.audit_events.record_best_effort(
@@ -119,15 +131,17 @@ class RagChatService:
             outcome=AuditEventOutcome.SUCCEEDED,
             actor_user_id=user_id,
             metadata={"result_count": result_count},
+            tenant_id=tenant_id,
         )
 
-    def _record_chat_failure(self, *, user_id: int) -> None:
+    def _record_chat_failure(self, *, user_id: int, tenant_id: int | None = None) -> None:
         if self.audit_events is None:
             return
         self.audit_events.record_best_effort(
             event_type=AuditEventType.CHAT_REQUEST,
             outcome=AuditEventOutcome.FAILED,
             actor_user_id=user_id,
+            tenant_id=tenant_id,
         )
 
     def close(self) -> None:

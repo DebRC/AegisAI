@@ -38,7 +38,7 @@ class DocumentStorage(ABC):
     """Store and remove original document bytes by opaque storage key."""
 
     @abstractmethod
-    def store(self, chunks: Iterable[bytes]) -> StoredDocument:
+    def store(self, chunks: Iterable[bytes], *, tenant_id: int | None = None) -> StoredDocument:
         """Stream chunks to durable storage and return server-derived metadata."""
 
     @abstractmethod
@@ -54,7 +54,7 @@ class LocalDocumentStorage(DocumentStorage):
     """Persistent local-volume adapter for development and Docker deployments."""
 
     _STORAGE_KEY_PATTERN = re.compile(
-        r"documents/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        r"documents/(?:tenant-[1-9][0-9]*/)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
     )
 
     def __init__(self, root_path: str | Path, maximum_bytes: int):
@@ -66,8 +66,8 @@ class LocalDocumentStorage(DocumentStorage):
         self._objects_path = self.root_path / "documents"
         self._objects_path.mkdir(parents=True, exist_ok=True)
 
-    def store(self, chunks: Iterable[bytes]) -> StoredDocument:
-        storage_key = self._new_storage_key()
+    def store(self, chunks: Iterable[bytes], *, tenant_id: int | None = None) -> StoredDocument:
+        storage_key = self._new_storage_key(tenant_id=tenant_id)
         final_path = self._path_for_key(storage_key)
         temporary_path: Path | None = None
         size_bytes = 0
@@ -125,8 +125,9 @@ class LocalDocumentStorage(DocumentStorage):
         except OSError as error:
             raise DocumentStorageError("Document storage operation failed") from error
 
-    def _new_storage_key(self) -> str:
-        return f"documents/{uuid4()}"
+    def _new_storage_key(self, *, tenant_id: int | None = None) -> str:
+        prefix = f"tenant-{tenant_id}/" if isinstance(tenant_id, int) and tenant_id > 0 else ""
+        return f"documents/{prefix}{uuid4()}"
 
     def _path_for_key(self, storage_key: str) -> Path:
         if not self._STORAGE_KEY_PATTERN.fullmatch(storage_key):

@@ -20,6 +20,10 @@ from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.user_role import UserRole
 from app.models.vector_cleanup_request import VectorCleanupRequest
+from app.models.tenant import Tenant
+from app.models.tenant import TenantMembership
+from app.models.api_key import ApiKey
+from app.models.retention_policy import RetentionPolicy
 
 __all__ = [
     "User",
@@ -44,4 +48,8 @@ __all__ = [
     "RolePermission",
     "UserRole",
     "VectorCleanupRequest",
+    "Tenant",
+    "TenantMembership",
+    "ApiKey",
+    "RetentionPolicy",
 ]

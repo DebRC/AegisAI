@@ -192,9 +192,9 @@ def complete_sso(
         response = JSONResponse(
         status_code=status.HTTP_200_OK,
         content=SsoCallbackResponse(
-            **session.model_dump(mode="json"),
+            **session.model_dump(mode="json", exclude_none=True),
             provider=provider,
-        ).model_dump(mode="json"),
+        ).model_dump(mode="json", exclude_none=True),
         headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
         )
     _clear_transaction_cookie(response, provider, transactions)

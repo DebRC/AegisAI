@@ -22,6 +22,7 @@ from app.repositories.role_repository import RoleRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.user_role_repository import UserRoleRepository
 from app.services.audit_event_service import AuditEventService
+from app.services.tenant_service import TenantService
 
 
 class RbacService:
@@ -33,6 +34,7 @@ class RbacService:
         self.user_roles = UserRoleRepository(db)
         self.users = UserRepository(db)
         self.audit_events = AuditEventService(db)
+        self.tenants = TenantService(db)
 
     def _commit(self) -> None:
         try:
@@ -41,44 +43,56 @@ class RbacService:
             self.db.rollback()
             raise
 
-    def create_role(self, name: str, description: str | None, *, actor_user_id: int | None = None) -> Role:
-        if self.roles.get_by_name(name) is not None:
+    def create_role(self, name: str, description: str | None, *, actor_user_id: int | None = None, tenant_id: int | None = None) -> Role:
+        if self.roles.get_by_name(name, tenant_id=tenant_id) is not None:
             raise RoleAlreadyExistsError()
 
         role = self.roles.create(
-            Role(name=name, description=description)
+            Role(name=name, description=description, tenant_id=tenant_id)
         )
-        self._record(actor_user_id, AuditEventType.RBAC_ROLE_CREATED, "role", role.id)
+        self._record(
+            actor_user_id,
+            AuditEventType.RBAC_ROLE_CREATED,
+            "role",
+            role.id,
+            tenant_id=tenant_id,
+        )
         self._commit()
 
         return role
 
-    def list_roles(self) -> list[Role]:
-        return self.roles.list()
+    def list_roles(self, *, tenant_id: int | None = None) -> list[Role]:
+        return self.roles.list(tenant_id=tenant_id)
 
-    def get_role(self, role_id: int) -> Role:
-        role = self.roles.get_by_id(role_id)
+    def get_role(self, role_id: int, *, tenant_id: int | None = None) -> Role:
+        role = self.roles.get_by_id(role_id, tenant_id=tenant_id)
 
         if role is None:
             raise RoleNotFoundError()
 
         return role
 
-    def delete_role(self, role_id: int, *, actor_user_id: int | None = None) -> None:
-        role = self.get_role(role_id)
+    def delete_role(self, role_id: int, *, actor_user_id: int | None = None, tenant_id: int | None = None) -> None:
+        role = self.get_role(role_id, tenant_id=tenant_id)
 
         if role.is_system:
             raise SystemRoleModificationError()
 
         self.roles.delete(role)
-        self._record(actor_user_id, AuditEventType.RBAC_ROLE_DELETED, "role", role.id)
+        self._record(
+            actor_user_id,
+            AuditEventType.RBAC_ROLE_DELETED,
+            "role",
+            role.id,
+            tenant_id=tenant_id,
+        )
         self._commit()
 
     def list_permissions(self) -> list[Permission]:
         return self.permissions.list()
 
-    def list_role_permissions(self, role_id: int) -> list[RolePermission]:
-        self.get_role(role_id)
+    def list_role_permissions(self, role_id: int, *, tenant_id: int | None = None) -> list[RolePermission]:
+        self.get_role(role_id, tenant_id=tenant_id)
 
         return self.role_permissions.list_by_role_id(role_id)
 
@@ -88,8 +102,9 @@ class RbacService:
         permission_id: int,
         *,
         actor_user_id: int | None = None,
+        tenant_id: int | None = None,
     ) -> RolePermission:
-        self.get_role(role_id)
+        self.get_role(role_id, tenant_id=tenant_id)
 
         if self.permissions.get_by_id(permission_id) is None:
             raise PermissionNotFoundError()
@@ -115,13 +130,14 @@ class RbacService:
             "role",
             role_id,
             {"permission_id": permission_id},
+            tenant_id=tenant_id,
         )
         self._commit()
 
         return assignment
 
-    def revoke_permission(self, role_id: int, permission_id: int, *, actor_user_id: int | None = None) -> None:
-        self.get_role(role_id)
+    def revoke_permission(self, role_id: int, permission_id: int, *, actor_user_id: int | None = None, tenant_id: int | None = None) -> None:
+        self.get_role(role_id, tenant_id=tenant_id)
 
         assignment = self.role_permissions.get_by_role_and_permission(
             role_id,
@@ -138,23 +154,29 @@ class RbacService:
             "role",
             role_id,
             {"permission_id": permission_id},
+            tenant_id=tenant_id,
         )
         self._commit()
 
-    def list_user_roles(self, user_id: int) -> list[UserRole]:
+    def list_user_roles(self, user_id: int, *, tenant_id: int | None = None) -> list[UserRole]:
         self._get_user(user_id)
 
-        return self.user_roles.list_by_user_id(user_id)
+        return self.user_roles.list_by_user_id(user_id, tenant_id=tenant_id)
 
-    def assign_role(self, user_id: int, role_id: int, *, actor_user_id: int | None = None) -> UserRole:
+    def assign_role(self, user_id: int, role_id: int, *, actor_user_id: int | None = None, tenant_id: int | None = None) -> UserRole:
         self._get_user(user_id)
-        self.get_role(role_id)
+        self.get_role(role_id, tenant_id=tenant_id)
+        if tenant_id is not None and self.tenants.get_active_membership(
+            tenant_id=tenant_id,
+            user_id=user_id,
+        ) is None:
+            raise UserNotFoundError()
 
-        if self.user_roles.get_by_user_and_role(user_id, role_id) is not None:
+        if self.user_roles.get_by_user_and_role(user_id, role_id, tenant_id=tenant_id) is not None:
             raise RoleAssignmentAlreadyExistsError()
 
         assignment = self.user_roles.create(
-            UserRole(user_id=user_id, role_id=role_id)
+            UserRole(user_id=user_id, role_id=role_id, tenant_id=tenant_id)
         )
         self._record(
             actor_user_id,
@@ -162,16 +184,17 @@ class RbacService:
             "user",
             user_id,
             {"role_id": role_id},
+            tenant_id=tenant_id,
         )
         self._commit()
 
         return assignment
 
-    def remove_role(self, user_id: int, role_id: int, *, actor_user_id: int | None = None) -> None:
+    def remove_role(self, user_id: int, role_id: int, *, actor_user_id: int | None = None, tenant_id: int | None = None) -> None:
         self._get_user(user_id)
-        self.get_role(role_id)
+        self.get_role(role_id, tenant_id=tenant_id)
 
-        assignment = self.user_roles.get_by_user_and_role(user_id, role_id)
+        assignment = self.user_roles.get_by_user_and_role(user_id, role_id, tenant_id=tenant_id)
 
         if assignment is None:
             raise RoleAssignmentNotFoundError()
@@ -183,6 +206,7 @@ class RbacService:
             "user",
             user_id,
             {"role_id": role_id},
+            tenant_id=tenant_id,
         )
         self._commit()
 
@@ -201,6 +225,7 @@ class RbacService:
         target_type: str,
         target_id: int,
         metadata: dict[str, int] | None = None,
+        tenant_id: int | None = None,
     ) -> None:
         self.audit_events.record(
             event_type=event_type,
@@ -209,4 +234,5 @@ class RbacService:
             target_type=target_type,
             target_id=target_id,
             metadata=metadata,
+            tenant_id=tenant_id,
         )

@@ -31,6 +31,7 @@ from app.core.config import settings
 from app.core.exceptions import AuthenticationError
 from app.core.exceptions import UserAlreadyExistsError
 from app.services.audit_event_service import AuditEventService
+from app.services.tenant_service import TenantService
 
 class AuthService:
 
@@ -44,6 +45,7 @@ class AuthService:
         self.users = UserRepository(db)
         self.refresh_tokens = RefreshTokenRepository(db)
         self.audit_events = AuditEventService(db)
+        self.tenants = TenantService(db)
 
     def _commit(self) -> None:
         try:
@@ -119,6 +121,7 @@ class AuthService:
         success_event_type: AuditEventType = AuditEventType.AUTH_LOGIN_SUCCEEDED,
         failure_event_type: AuditEventType = AuditEventType.AUTH_LOGIN_FAILED,
         metadata: dict[str, str] | None = None,
+        tenant_id: int | None = None,
     ) -> LoginResponse:
         """Issue a local session after any trusted authentication method."""
         if not user.is_active:
@@ -129,13 +132,16 @@ class AuthService:
             )
             raise AuthenticationError("Inactive user")
 
-        access = create_access_token(
-            user.id
+        membership = (
+            self.tenants.get_active_membership(tenant_id=tenant_id, user_id=user.id)
+            if tenant_id is not None
+            else self.tenants.ensure_default_membership(user.id)
         )
+        if membership is None:
+            raise AuthenticationError("Tenant membership unavailable")
 
-        refresh = create_refresh_token(
-            user.id
-        )
+        access = create_access_token(user.id, tenant_id=membership.tenant_id)
+        refresh = create_refresh_token(user.id, tenant_id=membership.tenant_id)
 
         refresh_token = RefreshToken(
 
@@ -144,6 +150,7 @@ class AuthService:
             expires_at=refresh_token_expiry(),
 
             user_id=user.id,
+            tenant_id=membership.tenant_id,
         )
 
         self.refresh_tokens.create(refresh_token)
@@ -154,6 +161,7 @@ class AuthService:
             target_type="session",
             target_id=refresh_token.id,
             metadata=metadata,
+            tenant_id=membership.tenant_id,
         )
 
         user.last_login = datetime.now(
@@ -171,6 +179,7 @@ class AuthService:
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
 
             user=user,
+            tenant_id=membership.tenant_id,
 
         )
 
@@ -189,6 +198,7 @@ class AuthService:
                 actor_user_id=stored.user_id,
                 target_type="session",
                 target_id=stored.id,
+                tenant_id=stored.tenant_id,
             )
 
         self._commit()
@@ -242,6 +252,7 @@ class AuthService:
                 target_type="user",
                 target_id=payload.sub,
                 metadata={"failure_category": "inactive_user"},
+                tenant_id=stored.tenant_id,
             )
             self._commit()
 
@@ -249,17 +260,24 @@ class AuthService:
                 "Inactive user"
             )
 
+        if stored.tenant_id is None or payload.tenant_id != stored.tenant_id:
+            self._record_auth_failure(AuditEventType.AUTH_REFRESH_FAILED)
+            raise AuthenticationError("Invalid refresh token")
+
+        membership = self.tenants.get_active_membership(
+            tenant_id=stored.tenant_id,
+            user_id=user.id,
+        )
+        if membership is None:
+            self._record_auth_failure(AuditEventType.AUTH_REFRESH_FAILED)
+            raise AuthenticationError("Tenant membership unavailable")
+
         self.refresh_tokens.revoke_by_token(
             refresh_token
         )
 
-        access = create_access_token(
-            user.id
-        )
-
-        new_refresh = create_refresh_token(
-            user.id
-        )
+        access = create_access_token(user.id, tenant_id=membership.tenant_id)
+        new_refresh = create_refresh_token(user.id, tenant_id=membership.tenant_id)
 
         replacement = self.refresh_tokens.create(
 
@@ -270,6 +288,7 @@ class AuthService:
                 expires_at=refresh_token_expiry(),
 
                 user_id=user.id,
+                tenant_id=membership.tenant_id,
 
             )
         )
@@ -279,6 +298,7 @@ class AuthService:
             actor_user_id=user.id,
             target_type="session",
             target_id=replacement.id,
+            tenant_id=membership.tenant_id,
         )
 
         self._commit()

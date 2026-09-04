@@ -60,6 +60,11 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
+    tenant_memberships: Mapped[list["TenantMembership"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
     document_access_grants: Mapped[list["DocumentAccessGrant"]] = relationship(
         back_populates="grantee",
         foreign_keys="DocumentAccessGrant.user_id",

@@ -23,7 +23,7 @@ class AuditEventPage:
 class AuditQueryService:
     """Expose bounded, allow-listed audit filters without mutation methods."""
 
-    _TARGET_TYPES = frozenset({"document", "document_access_grant", "permission", "role", "session", "user"})
+    _TARGET_TYPES = frozenset({"document", "document_access_grant", "permission", "role", "session", "user", "api_key", "retention_policy"})
 
     def __init__(self, db: Session):
         self.events = AuditEventRepository(db)
@@ -40,6 +40,7 @@ class AuditQueryService:
         target_id: int | None = None,
         occurred_after: datetime | None = None,
         occurred_before: datetime | None = None,
+        tenant_id: int | None = None,
     ) -> AuditEventPage:
         self._validate(
             offset=offset,
@@ -60,6 +61,7 @@ class AuditQueryService:
             "target_id": target_id,
             "occurred_after": occurred_after,
             "occurred_before": occurred_before,
+            "tenant_id": tenant_id,
         }
         return AuditEventPage(
             items=self.events.list_events(offset=offset, limit=limit, **filters),

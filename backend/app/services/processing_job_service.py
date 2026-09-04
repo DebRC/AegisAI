@@ -120,6 +120,7 @@ class ProcessingJobService:
                 actor_user_id=actor_user_id,
                 target_type="document",
                 target_id=document.id,
+                tenant_id=document.tenant_id,
             )
             self._commit()
             return job

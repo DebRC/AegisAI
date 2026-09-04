@@ -32,6 +32,9 @@ from app.services.retrieval_authority_service import RetrievalAuthorityService
 from app.services.retrieval_service import RetrievalService
 from app.services.rag_chat_service import RagChatService
 from app.services.sso_account_service import SsoAccountService
+from app.services.tenant_service import TenantService
+from app.services.api_key_service import ApiKeyService
+from app.services.retention_service import RetentionService
 from app.storage.documents import DocumentStorage
 from app.storage.documents import LocalDocumentStorage
 
@@ -167,6 +170,25 @@ def get_sso_account_service(
     db: Session = Depends(get_db),
 ) -> SsoAccountService:
     return SsoAccountService(db)
+
+
+def get_tenant_service(
+    db: Session = Depends(get_db),
+) -> TenantService:
+    return TenantService(db)
+
+
+def get_api_key_service(
+    db: Session = Depends(get_db),
+) -> ApiKeyService:
+    return ApiKeyService(db)
+
+
+def get_retention_service(
+    db: Session = Depends(get_db),
+    storage: DocumentStorage = Depends(get_document_storage),
+) -> RetentionService:
+    return RetentionService(db, storage)
 
 
 def get_sso_provider_factory() -> SsoProviderFactory:

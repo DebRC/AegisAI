@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.processing_job import ProcessingJob
 from app.models.processing_job import ProcessingJobStatus
+from app.models.document import Document
 
 
 class ProcessingJobRepository:
@@ -47,14 +48,18 @@ class ProcessingJobRepository:
             )
         )
 
-    def list_for_administration(self, *, offset: int, limit: int, status: ProcessingJobStatus | None) -> list[ProcessingJob]:
+    def list_for_administration(self, *, offset: int, limit: int, status: ProcessingJobStatus | None, tenant_id: int | None = None) -> list[ProcessingJob]:
         statement = select(ProcessingJob)
+        if tenant_id is not None:
+            statement = statement.join(Document).where(Document.tenant_id == tenant_id)
         if status is not None:
             statement = statement.where(ProcessingJob.status == status)
         return list(self.db.scalars(statement.order_by(ProcessingJob.created_at.desc(), ProcessingJob.id.desc()).offset(offset).limit(limit)))
 
-    def count_for_administration(self, *, status: ProcessingJobStatus | None) -> int:
+    def count_for_administration(self, *, status: ProcessingJobStatus | None, tenant_id: int | None = None) -> int:
         statement = select(ProcessingJob)
+        if tenant_id is not None:
+            statement = statement.join(Document).where(Document.tenant_id == tenant_id)
         if status is not None:
             statement = statement.where(ProcessingJob.status == status)
         return self.db.scalar(select(func.count()).select_from(statement.subquery())) or 0

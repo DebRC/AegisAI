@@ -15,6 +15,7 @@ export interface AegisTokenPair {
 
 export interface AegisLoginResponse extends AegisTokenPair {
   user: AegisUser;
+  tenant_id?: number | null;
 }
 
 export interface SessionStatus {
@@ -60,3 +61,7 @@ export interface AdminDocument { id: number; title: string; original_filename: s
 export interface AdminDocumentPage { items: AdminDocument[]; offset: number; limit: number; total: number; }
 export interface AdminJob { id: number; document_id: number; job_type: string; status: string; attempt_count: number; error_message: string | null; }
 export interface AuditEvent { id: number; event_type: string; outcome: string; actor_user_id: number | null; occurred_at: string; }
+export interface Tenant { id: number; slug: string; name: string; is_active: boolean; }
+export interface TenantMembership { tenant: Tenant; is_active: boolean; }
+export interface ManagedApiKey { id: number; name: string; key_prefix: string; scopes: string[]; expires_at: string | null; revoked_at: string | null; last_used_at: string | null; created_at: string; }
+export interface RetentionPolicy { document_retention_days: number | null; updated_at: string | null; }

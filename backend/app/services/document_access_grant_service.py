@@ -86,6 +86,7 @@ class DocumentAccessGrantService:
             target_type="document",
             target_id=document.id,
             metadata=metadata,
+            tenant_id=document.tenant_id,
         )
         self._commit()
         return grant
@@ -97,7 +98,7 @@ class DocumentAccessGrantService:
         document_id: int,
         grantee_user_id: int,
     ) -> None:
-        self._locked_manageable_document(
+        document = self._locked_manageable_document(
             actor_user_id=actor_user_id,
             document_id=document_id,
         )
@@ -116,6 +117,7 @@ class DocumentAccessGrantService:
             target_type="document",
             target_id=document_id,
             metadata={"access_level": access_level.value},
+            tenant_id=document.tenant_id,
         )
         self._commit()
 

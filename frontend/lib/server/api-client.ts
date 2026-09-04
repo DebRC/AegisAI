@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AdminOverview, AdminUserPage, AegisDocument, AegisLoginResponse, AegisTokenPair, AegisUser, DocumentDetailData, DocumentPage, RetrievalResponse } from "../api/types";
+import type { AdminOverview, AdminUserPage, AegisDocument, AegisLoginResponse, AegisTokenPair, AegisUser, DocumentDetailData, DocumentPage, RetrievalResponse, TenantMembership, ManagedApiKey, RetentionPolicy } from "../api/types";
 import { apiBaseUrl } from "./config";
 
 export class AegisApiError extends Error {
@@ -121,4 +121,11 @@ export const aegisApi = {
   adminDocuments(accessToken: string): Promise<import("../api/types").AdminDocumentPage> { return backendRequest("/admin/documents", { headers: { Authorization: `Bearer ${accessToken}` } }); },
   adminJobs(accessToken: string): Promise<import("../api/types").AdminJob[]> { return backendRequest("/admin/processing-jobs", { headers: { Authorization: `Bearer ${accessToken}` } }); },
   auditEvents(accessToken: string): Promise<{ items: import("../api/types").AuditEvent[] }> { return backendRequest("/audit-events", { headers: { Authorization: `Bearer ${accessToken}` } }); },
+  tenants(accessToken: string): Promise<TenantMembership[]> { return backendRequest("/tenants", { headers: { Authorization: `Bearer ${accessToken}` } }); },
+  selectTenant(accessToken: string, tenantId: number): Promise<AegisLoginResponse> { return backendRequest(`/tenants/${tenantId}/select`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}` } }); },
+  managedApiKeys(accessToken: string): Promise<ManagedApiKey[]> { return backendRequest("/governance/api-keys", { headers: { Authorization: `Bearer ${accessToken}` } }); },
+  createManagedApiKey(accessToken: string, name: string, scopes: string[], expiresAt?: string): Promise<ManagedApiKey & { api_key: string }> { return backendRequest("/governance/api-keys", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ name, scopes, ...(expiresAt ? { expires_at: expiresAt } : {}) }) }); },
+  revokeManagedApiKey(accessToken: string, id: number): Promise<void> { return backendRequest(`/governance/api-keys/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } }); },
+  retentionPolicy(accessToken: string): Promise<RetentionPolicy> { return backendRequest("/governance/retention", { headers: { Authorization: `Bearer ${accessToken}` } }); },
+  updateRetentionPolicy(accessToken: string, days: number | null): Promise<RetentionPolicy> { return backendRequest("/governance/retention", { method: "PUT", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ document_retention_days: days }) }); },
 };

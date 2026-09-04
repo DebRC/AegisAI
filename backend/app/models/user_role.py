@@ -11,8 +11,9 @@ from app.db.base import Base
 class UserRole(Base):
     __tablename__ = "user_roles"
     __table_args__ = (
-        UniqueConstraint("user_id", "role_id", name="uq_user_roles_user_id_role_id"),
+        UniqueConstraint("tenant_id", "user_id", "role_id", name="uq_user_roles_tenant_user_role"),
         Index("ix_user_roles_role_id", "role_id"),
+        Index("ix_user_roles_tenant_user", "tenant_id", "user_id"),
     )
 
     user_id: Mapped[int] = mapped_column(
@@ -25,6 +26,12 @@ class UserRole(Base):
         nullable=False,
     )
 
+    # The migration backfills every legacy assignment before making this
+    # non-null in PostgreSQL. Nullable test fixtures retain prior unit coverage.
+    tenant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True
+    )
+
     user: Mapped["User"] = relationship(
         back_populates="role_assignments",
     )
@@ -32,3 +39,5 @@ class UserRole(Base):
     role: Mapped["Role"] = relationship(
         back_populates="user_assignments",
     )
+
+    tenant: Mapped["Tenant | None"] = relationship()

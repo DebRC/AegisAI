@@ -13,11 +13,13 @@ import app.models
 from app.core.exceptions import RoleAlreadyExistsError
 from app.core.exceptions import RoleNotFoundError
 from app.core.exceptions import SystemRoleModificationError
+from app.core.exceptions import UserNotFoundError
 from app.db.base import Base
 from app.models import Permission
 from app.models import AuditEvent
 from app.models import AuditEventType
 from app.models import Role
+from app.models import Tenant
 from app.models import User
 from app.repositories.permission_repository import PermissionRepository
 from app.security import dependencies
@@ -189,3 +191,21 @@ class RbacServiceTests(unittest.TestCase):
         )
         self.assertTrue(all(event.actor_user_id == self.user.id for event in events))
         self.assertEqual(events[1].metadata_, {"permission_id": permission_id})
+
+    def test_tenant_role_assignment_requires_an_active_membership(self) -> None:
+        tenant = Tenant(name="Research", slug="research")
+        outside_user = User(
+            email="outside@example.com",
+            full_name="Outside user",
+            password_hash="not-used-by-rbac-tests",
+        )
+        self.session.add_all([tenant, outside_user])
+        self.session.commit()
+        role = self.service.create_role("analyst", "Read documents", tenant_id=tenant.id)
+
+        with self.assertRaises(UserNotFoundError):
+            self.service.assign_role(
+                outside_user.id,
+                role.id,
+                tenant_id=tenant.id,
+            )

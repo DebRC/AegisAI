@@ -6,6 +6,7 @@ from app.models.user import User
 from app.schemas.document import ProcessingJobResponse
 from app.security.dependencies import require_administration_permission
 from app.security.permissions import PermissionCode
+from app.security.dependencies import TenantContext, get_current_tenant_context
 from app.services.admin_processing_job_service import AdminProcessingJobService
 
 router = APIRouter(prefix="/admin/processing-jobs", tags=["Administration"])
@@ -13,13 +14,18 @@ def _error(error):
     if isinstance(error, ProcessingJobNotFoundError): return HTTPException(404, "Processing job not found")
     return HTTPException(status.HTTP_409_CONFLICT, "Processing job operation cannot be completed")
 @router.get("", response_model=list[ProcessingJobResponse])
-def list_jobs(offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), status_filter: ProcessingJobStatus | None = Query(None, alias="status"), service: AdminProcessingJobService = Depends(get_admin_processing_job_service), _: User = Depends(require_administration_permission(PermissionCode.DOCUMENTS_MANAGE))):
-    return service.list_jobs(offset=offset, limit=limit, status=status_filter).items
+def list_jobs(offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), status_filter: ProcessingJobStatus | None = Query(None, alias="status"), service: AdminProcessingJobService = Depends(get_admin_processing_job_service), _: User = Depends(require_administration_permission(PermissionCode.DOCUMENTS_MANAGE)), context: TenantContext | None = Depends(get_current_tenant_context)):
+    tenant_id = getattr(getattr(context, "tenant", None), "id", None)
+    return service.list_jobs(offset=offset, limit=limit, status=status_filter, tenant_id=tenant_id).items if tenant_id is not None else service.list_jobs(offset=offset, limit=limit, status=status_filter).items
 @router.post("/{job_id}/retry", response_model=ProcessingJobResponse)
-def retry_job(job_id: int, service: AdminProcessingJobService = Depends(get_admin_processing_job_service), _: User = Depends(require_administration_permission(PermissionCode.DOCUMENTS_MANAGE))):
-    try: return service.retry_job(job_id)
+def retry_job(job_id: int, service: AdminProcessingJobService = Depends(get_admin_processing_job_service), _: User = Depends(require_administration_permission(PermissionCode.DOCUMENTS_MANAGE)), context: TenantContext | None = Depends(get_current_tenant_context)):
+    try:
+        tenant_id = getattr(getattr(context, "tenant", None), "id", None)
+        return service.retry_job(job_id, tenant_id=tenant_id) if tenant_id is not None else service.retry_job(job_id)
     except (ProcessingJobNotFoundError, ProcessingJobStateError) as error: raise _error(error)
 @router.post("/{job_id}/cancel", response_model=ProcessingJobResponse)
-def cancel_job(job_id: int, service: AdminProcessingJobService = Depends(get_admin_processing_job_service), _: User = Depends(require_administration_permission(PermissionCode.DOCUMENTS_MANAGE))):
-    try: return service.cancel_job(job_id)
+def cancel_job(job_id: int, service: AdminProcessingJobService = Depends(get_admin_processing_job_service), _: User = Depends(require_administration_permission(PermissionCode.DOCUMENTS_MANAGE)), context: TenantContext | None = Depends(get_current_tenant_context)):
+    try:
+        tenant_id = getattr(getattr(context, "tenant", None), "id", None)
+        return service.cancel_job(job_id, tenant_id=tenant_id) if tenant_id is not None else service.cancel_job(job_id)
     except (ProcessingJobNotFoundError, ProcessingJobStateError) as error: raise _error(error)

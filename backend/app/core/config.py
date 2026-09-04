@@ -23,6 +23,9 @@ class Settings(BaseSettings):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     QDRANT_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0, le=120)
+    # Readiness must fail quickly instead of holding a load balancer request
+    # while an unavailable local dependency waits for a long network timeout.
+    OBSERVABILITY_DEPENDENCY_TIMEOUT_SECONDS: float = Field(default=1.0, gt=0, le=10)
 
     # Phase 9 starts with OpenAI's text-embedding-3-small at its documented
     # default of 1,536 dimensions. The provider is isolated behind an adapter
@@ -60,6 +63,13 @@ class Settings(BaseSettings):
     CELERY_TASK_TIME_LIMIT_SECONDS: int = 10 * 60
     CELERY_TASK_SOFT_TIME_LIMIT_SECONDS: int = 9 * 60
     PROCESSING_OUTBOX_DISPATCH_INTERVAL_SECONDS: int = 30
+
+    # Phase 20 uses a separate Redis logical database from Celery transport so
+    # request throttling cannot consume or alter durable processing delivery.
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_REDIS_URL: str = "redis://redis:6379/2"
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = Field(default=120, ge=1, le=100_000)
+    RETENTION_SWEEP_INTERVAL_SECONDS: int = Field(default=86_400, ge=60, le=604_800)
 
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str

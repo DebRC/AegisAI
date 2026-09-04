@@ -54,6 +54,10 @@ class AuditEventType(str, Enum):
     DOCUMENT_READ = "document.read"
     RETRIEVAL_SEARCH = "retrieval.search"
     CHAT_REQUEST = "chat.request"
+    GOVERNANCE_API_KEY_CREATED = "governance.api_key.created"
+    GOVERNANCE_API_KEY_REVOKED = "governance.api_key.revoked"
+    GOVERNANCE_RETENTION_UPDATED = "governance.retention.updated"
+    GOVERNANCE_RETENTION_PURGED = "governance.retention.purged"
 
 
 class AuditEvent(Base):
@@ -67,6 +71,7 @@ class AuditEvent(Base):
         ),
         Index("ix_audit_events_occurred_at", "occurred_at"),
         Index("ix_audit_events_actor_user_id_occurred_at", "actor_user_id", "occurred_at"),
+        Index("ix_audit_events_tenant_id_occurred_at", "tenant_id", "occurred_at"),
         Index("ix_audit_events_target_type_target_id_occurred_at", "target_type", "target_id", "occurred_at"),
         Index("ix_audit_events_event_type_occurred_at", "event_type", "occurred_at"),
     )
@@ -74,6 +79,9 @@ class AuditEvent(Base):
     actor_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
+    )
+    tenant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=True
     )
     event_type: Mapped[AuditEventType] = mapped_column(
         SqlEnum(
@@ -103,3 +111,4 @@ class AuditEvent(Base):
     metadata_: Mapped[dict[str, object]] = mapped_column("metadata", JSON, default=dict, nullable=False)
 
     actor: Mapped["User | None"] = relationship(foreign_keys=[actor_user_id])
+    tenant: Mapped["Tenant | None"] = relationship(foreign_keys=[tenant_id])

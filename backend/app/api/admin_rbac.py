@@ -7,6 +7,7 @@ from app.models.user import User
 from app.schemas.admin import AdminPermissionResponse, AdminRoleResponse
 from app.security.dependencies import require_administration_permission
 from app.security.permissions import PermissionCode
+from app.security.dependencies import TenantContext, get_current_tenant_context
 from app.services.admin_rbac_service import AdminRbacService
 
 
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/admin", tags=["Administration"])
 def list_roles(
     service: AdminRbacService = Depends(get_admin_rbac_service),
     _: User = Depends(require_administration_permission(PermissionCode.ROLES_READ)),
+    context: TenantContext | None = Depends(get_current_tenant_context),
 ) -> list[AdminRoleResponse]:
     return [
         AdminRoleResponse(
@@ -27,7 +29,7 @@ def list_roles(
             permission_codes=item.permission_codes,
             user_count=item.user_count,
         )
-        for item in service.list_roles()
+        for item in (service.list_roles(tenant_id=getattr(getattr(context, "tenant", None), "id", None)) if getattr(getattr(context, "tenant", None), "id", None) is not None else service.list_roles())
     ]
 
 
@@ -35,6 +37,7 @@ def list_roles(
 def list_permissions(
     service: AdminRbacService = Depends(get_admin_rbac_service),
     _: User = Depends(require_administration_permission(PermissionCode.ROLES_READ)),
+    context: TenantContext | None = Depends(get_current_tenant_context),
 ) -> list[AdminPermissionResponse]:
     return [
         AdminPermissionResponse(
@@ -43,5 +46,5 @@ def list_permissions(
             description=item.permission.description,
             role_count=item.role_count,
         )
-        for item in service.list_permissions()
+        for item in (service.list_permissions(tenant_id=getattr(getattr(context, "tenant", None), "id", None)) if getattr(getattr(context, "tenant", None), "id", None) is not None else service.list_permissions())
     ]

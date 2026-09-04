@@ -34,6 +34,15 @@ RUN APP_NAME=AegisAI \
     REFRESH_TOKEN_EXPIRE_DAYS=7 \
     alembic upgrade head --sql > /tmp/alembic-upgrade.sql
 
+# The runtime never needs root privileges.  Kubernetes supplies fsGroup=10001
+# for the mounted document volume so the API and Celery workers can write files.
+RUN groupadd --gid 10001 aegis \
+    && useradd --uid 10001 --gid aegis --no-create-home --shell /usr/sbin/nologin aegis \
+    && mkdir -p /data/documents \
+    && chown -R aegis:aegis /app /data/documents
+
+USER aegis
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

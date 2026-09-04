@@ -11,6 +11,7 @@ python-multipart==0.0.32
 email-validator==2.3.0
 httpx==0.28.1
 celery[redis]==5.5.3
+prometheus-client==0.23.1
 pypdf==6.14.2
 python-docx==1.2.0
 qdrant-client==1.18.0

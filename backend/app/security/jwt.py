@@ -16,6 +16,7 @@ def create_token(
     user_id: int,
     token_type: TokenType,
     expires_delta: timedelta,
+    tenant_id: int | None = None,
 ) -> str:
     """Generate a signed token with the requested lifetime and type."""
 
@@ -27,6 +28,8 @@ def create_token(
         "exp": expire,
         "jti": str(uuid4()),
     }
+    if tenant_id is not None:
+        payload["tenant_id"] = tenant_id
 
     return jwt.encode(
         payload,
@@ -35,21 +38,25 @@ def create_token(
     )
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(user_id: int, *, tenant_id: int | None = None) -> str:
     return create_token(
         user_id,
         TokenType.ACCESS,
         timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        tenant_id,
     )
 
 
 def create_refresh_token(
     user_id: int,
+    *,
+    tenant_id: int | None = None,
 ) -> str:
     return create_token(
         user_id,
         TokenType.REFRESH,
         timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        tenant_id,
     )
 
 

@@ -15,12 +15,13 @@ from app.models.audit_event import AuditEventOutcome
 from app.models.audit_event import AuditEventType
 from app.schemas.audit import AuditEventListResponse
 from app.security.dependencies import require_permission
+from app.security.dependencies import TenantContext, get_current_tenant_context
 from app.security.permissions import PermissionCode
 from app.services.audit_query_service import AuditQueryService
 
 
 router = APIRouter(prefix="/audit-events", tags=["Audit events"])
-_TARGET_TYPES = Literal["document", "document_access_grant", "permission", "role", "session", "user"]
+_TARGET_TYPES = Literal["document", "document_access_grant", "permission", "role", "session", "user", "api_key", "retention_policy"]
 
 
 @router.get("", response_model=AuditEventListResponse)
@@ -36,9 +37,10 @@ def list_audit_events(
     occurred_before: datetime | None = None,
     service: AuditQueryService = Depends(get_audit_query_service),
     _: object = Depends(require_permission(PermissionCode.AUDIT_READ)),
+    context: TenantContext | None = Depends(get_current_tenant_context),
 ) -> AuditEventListResponse:
     try:
-        page = service.list_events(
+        arguments = dict(
             offset=offset,
             limit=limit,
             actor_user_id=actor_user_id,
@@ -49,6 +51,10 @@ def list_audit_events(
             occurred_after=occurred_after,
             occurred_before=occurred_before,
         )
+        tenant_id = getattr(getattr(context, "tenant", None), "id", None)
+        if tenant_id is not None:
+            arguments["tenant_id"] = tenant_id
+        page = service.list_events(**arguments)
     except AuditEventValidationError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

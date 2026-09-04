@@ -27,6 +27,7 @@ class Document(Base):
     __table_args__ = (
         UniqueConstraint("storage_key", name="uq_documents_storage_key"),
         Index("ix_documents_uploader_user_id", "uploader_user_id"),
+        Index("ix_documents_tenant_id_created_at", "tenant_id", "created_at"),
         Index("ix_documents_status_created_at", "status", "created_at"),
         Index("ix_documents_deleted_at_created_at", "deleted_at", "created_at"),
     )
@@ -34,6 +35,10 @@ class Document(Base):
     uploader_user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
+    )
+
+    tenant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=True
     )
 
     title: Mapped[str] = mapped_column(
@@ -90,6 +95,8 @@ class Document(Base):
     uploader: Mapped["User"] = relationship(
         back_populates="uploaded_documents",
     )
+
+    tenant: Mapped["Tenant | None"] = relationship()
 
     processing_jobs: Mapped[list["ProcessingJob"]] = relationship(
         back_populates="document",

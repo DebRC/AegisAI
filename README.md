@@ -10,7 +10,7 @@ The backend foundation, document ingestion, background processing, text processi
 
 | Capability | Status | Outcome |
 | --- | --- | --- |
-| API and local platform | Available | FastAPI API, PostgreSQL 16, Qdrant, Docker Compose, health checks, and Alembic migrations. |
+| API and platform | Available | FastAPI API, PostgreSQL 16, Qdrant, Docker Compose local stack, Kubernetes deployment package, health checks, and Alembic migrations. |
 | Local authentication | Available | User registration, bcrypt password hashing, short-lived access JWTs, rotatable refresh tokens, logout, and inactive-user protection. |
 | Authorization | Available | Local roles and permissions, administrator bootstrap, request-time RBAC, and direct document read/write sharing. |
 | Enterprise SSO | Available | Google OpenID Connect, GitHub OAuth, and Microsoft Entra ID adapters with PKCE, signed state, nonce validation, account linking, and local AegisAI sessions. |
@@ -52,8 +52,11 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 | Phase 13 — Audit logging | Complete | Append-only security events, privacy-safe read telemetry, and protected audit queries. |
 | Phase 14 — Administration control plane | Complete | Secure APIs for users, RBAC summaries, document/job operations, and operational overview. |
 | Phase 15 — Next.js frontend | Complete | Browser workspace, server-managed sessions, document/search/chat, administration, and full Compose verification are complete. |
-| Phase 16 — Observability | Planned | Structured logs, metrics, health, and operational visibility. |
-| Phases 17–20 — Production scale | Planned | CI/CD, Kubernetes, multi-tenancy, API keys, rate limits, and retention controls. |
+| Phase 16 — Observability | Complete | Privacy-safe JSON logs and request correlation, safe failure telemetry, liveness/readiness, Prometheus metrics, worker task signals, and operating guidance. |
+| Phase 17 — CI/CD | Complete | GitHub Actions validates source, migrations, images, frontend builds, and Kubernetes manifest rendering; manual release candidates are traceable by tag and commit without deployment authority. |
+| Phase 18 — Kubernetes | Complete | Kustomize-based platform, migration, and application rollout stages; persistent storage, probes, resource controls, autoscaling, disruption budgets, and a secure secret handoff. |
+| Phase 19 — Multi-tenancy | Complete | Tenant memberships, tenant-scoped sessions/RBAC/resources, storage prefixes, vector filters, administration views, audit queries, and browser workspace switching. |
+| Phase 20 — Enterprise governance | Complete | Least-privilege tenant API keys, Redis-backed tenant-principal rate limiting, retention policy controls, scheduled cleanup, audit events, and browser administration. |
 
 ### Engineering documents
 
@@ -68,6 +71,11 @@ Qdrant is already provisioned as local infrastructure. Phase 6 stores original d
 - [Audit logging design](docs/audit-logging.md) defines the active Phase 13 event policy, data-minimization rules, and delivery checkpoints.
 - [Administrative control-plane design](docs/admin-dashboard.md) defines the implemented Phase 14 permissions, routes, safety boundaries, and verification workflow.
 - [Frontend design](docs/frontend.md) defines the active Phase 15 browser architecture, session policy, screen map, and safety boundaries.
+- [Observability design](docs/observability.md) defines the active Phase 16 telemetry, privacy, health, and operations contract.
+- [CI/CD design](docs/ci-cd.md) defines the active Phase 17 delivery contract, CI boundaries, and release safeguards.
+- [Kubernetes deployment guide](docs/kubernetes.md) defines the active Phase 18 deployment topology, secret boundary, persistence, rollout order, verification, and rollback safeguards.
+- [Multi-tenancy design](docs/multi-tenancy.md) defines the implemented Phase 19 boundary, migration, authorization, storage, retrieval, audit, and workspace-switching contract.
+- [Enterprise governance design](docs/enterprise-governance.md) defines the implemented Phase 20 API-key, rate-limit, retention, audit, and manual-verification contract.
 
 ## Architecture
 
@@ -98,7 +106,8 @@ or refresh   Google | GitHub | Entra                         dependency
                              users
                              refresh_tokens
                              external_identities
-                             roles / permissions
+                             tenants / memberships
+                             tenant roles / permissions
 
 Documents ──► PostgreSQL outbox ──► Redis ──► Celery workers
                                            │
@@ -153,6 +162,13 @@ Password login or verified SSO identity
 
 The access JWT contains identity and token metadata, not permissions. Each permission-aware request checks PostgreSQL, so a role or permission change applies immediately instead of waiting for an old JWT to expire.
 
+Every access and refresh session is also bound to one active organization. The
+server validates the matching membership before it evaluates roles, reads a
+document, queries an admin view, or retrieves a vector candidate. Use
+`GET /tenants` and `POST /tenants/{tenant_id}/select` (or the browser’s
+**Switch workspace** page) to change organization; clients never nominate a
+tenant through an untrusted header.
+
 RBAC is represented by the following relationships:
 
 ```text
@@ -206,6 +222,8 @@ When startup completes:
 | API | `http://localhost:8000` |
 | Web application | `http://localhost:3000` |
 | Health check | `http://localhost:8000/health` |
+| Readiness check | `http://localhost:8000/health/ready` |
+| Prometheus metrics | `http://localhost:8000/health/metrics` |
 | Interactive OpenAPI docs | `http://localhost:8000/docs` |
 | PostgreSQL | `localhost:5432` |
 | Qdrant API | `http://localhost:6333` |
@@ -226,7 +244,7 @@ docker compose down
 docker compose up --build --force-recreate
 ```
 
-Docker Compose is the supported local-development workflow. It is not yet a production deployment recipe; production hardening, observability, CI/CD, Kubernetes, and multi-tenancy are planned later.
+Docker Compose is the supported local-development workflow. It is not a production deployment recipe. Phase 18 adds a Kubernetes deployment baseline; it still requires your own cluster, immutable registry images, RWX document storage, secrets, DNS/TLS, and organization-specific data protection before public production use. See the [Kubernetes deployment guide](docs/kubernetes.md).
 
 ## Configuration
 
@@ -250,6 +268,8 @@ Copy [backend/.env.example](backend/.env.example) to `backend/.env`. Do not comm
 | `JWT_SECRET_KEY` | Long, unique secret used to sign AegisAI access and refresh JWTs. |
 | `JWT_ALGORITHM` | JWT signing algorithm; the supplied configuration uses `HS256`. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS` | Local token lifetimes. |
+| `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REDIS_URL`, `RATE_LIMIT_REQUESTS_PER_MINUTE` | Enable the fail-closed, Redis-backed per-tenant-principal request limit. The supplied local default is 120 requests/minute. |
+| `RETENTION_SWEEP_INTERVAL_SECONDS` | Celery Beat interval for applying enabled tenant document-retention policies; the supplied default is daily. |
 
 ### Optional SSO settings
 
@@ -284,12 +304,17 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | --- | --- | --- |
 | `GET` | `/` | Service metadata. |
 | `GET` | `/health` | Application health check. |
+| `GET` | `/health/ready` | Required local dependency readiness: PostgreSQL, Redis, and Qdrant. |
+| `GET` | `/health/metrics` | Prometheus-format operational metrics; expose internally only outside local development. |
 | `GET` | `/database/health` | PostgreSQL connectivity check. |
 | `POST` | `/auth/register` | Create a local email/password user. |
 | `POST` | `/auth/login` | Exchange OAuth2 form credentials for AegisAI tokens. |
 | `GET` | `/auth/me` | Return the authenticated local user. |
 | `POST` | `/auth/refresh` | Rotate a valid refresh token and return a new pair. |
 | `POST` | `/auth/logout` | Soft-revoke a refresh token. |
+| `GET`, `POST` | `/tenants` | List a user’s organizations or create a new organization where that user becomes its administrator. |
+| `POST` | `/tenants/{tenant_id}/select` | Verify membership and issue a new tenant-scoped session pair. |
+| `POST` | `/tenants/{tenant_id}/memberships` | Add an existing active AegisAI user to the active tenant; requires `roles:assign`. |
 | `GET` | `/auth/sso/{provider}` | Start a browser SSO flow for `google`, `github`, or `microsoft`. |
 | `GET` | `/protected` | Minimal protected-route example. |
 | `/rbac/*` | See the RBAC section below | Manage roles and assignments with administrator permissions. |
@@ -306,6 +331,8 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | `GET` | `/documents/{document_id}/extraction` | Inspect safe extraction metadata with `documents:read`. |
 | `GET` | `/documents/{document_id}/extraction/chunks` | Inspect ordered, paginated chunks with `documents:read`. |
 | `POST` | `/documents/{document_id}/reprocess` | Queue replacement extraction with `documents:write`; returns `202 Accepted`. |
+| `/governance/api-keys` | List, create once-revealed, or revoke scoped tenant API keys with `api_keys:manage`. |
+| `/governance/retention` | Read or update automatic document-retention policy with `retention:manage`; `/purge` runs an authorized immediate sweep. |
 
 ### Local login and token use
 
@@ -449,6 +476,7 @@ documents:read     documents:write
 documents:manage
 users:read         users:manage
 roles:read         roles:manage         roles:assign
+audit:read         api_keys:manage      retention:manage
 ```
 
 The `/rbac` management API requires both an active local user and the indicated database-backed permission.
@@ -468,6 +496,36 @@ docker compose exec backend python -m scripts.bootstrap_administrator admin@exam
 
 The command is idempotent. New SSO users have no role by default, so protected RBAC management calls correctly return HTTP 403 until an administrator grants an appropriate local role.
 
+### Organizations and enterprise governance
+
+Each new installation is migrated into a `Default organization`; every current
+user becomes a member. New organizations clone the system roles and make their
+creator the tenant administrator. Adding a member does not grant any role—an
+administrator assigns the least-privilege role afterwards. This prevents a
+membership in one organization from creating access in another.
+
+API keys are tenant-scoped machine credentials. Their high-entropy plaintext
+value is returned only by `POST /governance/api-keys`; AegisAI stores only an
+HMAC hash, prefix, scopes, lifecycle dates, and safe audit records. Use it in
+`X-API-Key`, for example:
+
+```bash
+curl http://localhost:8000/documents \
+  -H 'X-API-Key: YOUR_ONCE_REVEALED_API_KEY'
+```
+
+Requested key scopes must be a subset of the creating human’s current tenant
+permissions. Machine keys cannot create/revoke keys or change retention, even
+if an operator accidentally includes governance scopes. Rate limits are keyed
+by tenant and human/key principal; an unavailable configured Redis limiter
+returns a safe `503` rather than silently allowing traffic.
+
+Automatic retention is disabled until a tenant administrator sets a positive
+document-day value. The daily worker sweep uses the existing document-deletion
+lifecycle, cancelling work, queuing vector cleanup, deleting extraction output,
+and attempting source-file removal. An administrator may run the same
+tenant-scoped sweep immediately through `POST /governance/retention/purge`.
+
 ## Testing, migrations, and development
 
 ### Run tests locally
@@ -479,7 +537,7 @@ cd backend
 venv/bin/python -m unittest discover -s tests -v
 ```
 
-The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, document cleanup, background-job state, extraction, chunking, reprocessing, embedding validation and idempotency, Qdrant collection safety, document-access grants, permission-aware retrieval, grounded chat and SSE behavior, Swagger security schemes, migrations, and application startup.
+The unit suite uses isolated SQLite databases and mocks where appropriate. It covers API handlers, services, repositories, JWT handling, refresh-token rotation, RBAC enforcement, SSO provider adapters, account linking, session issuance, tenant isolation, machine-key hashing and revocation, rate limits, retention workflows, document cleanup, background-job state, extraction, chunking, reprocessing, embedding validation and idempotency, Qdrant collection safety, document-access grants, permission-aware retrieval, grounded chat and SSE behavior, Swagger security schemes, migrations, and application startup.
 
 The Dockerfile runs this suite during image build and produces the complete Alembic upgrade SQL. Compose runs the suite again before applying migrations and launching the API.
 
@@ -495,7 +553,7 @@ venv/bin/alembic upgrade head
 venv/bin/alembic current
 ```
 
-Review every generated migration before applying it, particularly constraint and index changes. The current migration chain creates users, refresh tokens, RBAC tables and seeded permissions, the `administrator` system role, external-identity bindings, documents, direct document-access grants, processing/outbox records, extraction/chunk records, embedding pointers, and durable vector-cleanup requests.
+Review every generated migration before applying it, particularly constraint and index changes. The current migration chain creates users, refresh tokens, RBAC tables and seeded permissions, the `administrator` system role, external-identity bindings, documents, direct document-access grants, processing/outbox records, extraction/chunk records, embedding pointers, durable vector-cleanup requests, tenant/membership isolation, tenant-scoped roles/sessions/documents/audits, API keys, and retention policies.
 
 When running Alembic from the host, use a database URL reachable from the host—normally `localhost`, not Compose's internal `postgres` hostname. `ALEMBIC_DATABASE_URL` can override the configured database URL for that command.
 
@@ -519,6 +577,8 @@ When running Alembic from the host, use a database URL reachable from the host�
 │   ├── tests/               # Unit and API-boundary tests
 │   ├── Dockerfile
 │   └── .env.example
+├── infrastructure/
+│   └── kubernetes/         # Phase 18 Kustomize platform, migration, and application stages
 └── docker-compose.yaml      # Local API, PostgreSQL, and Qdrant stack
 ```
 
@@ -531,15 +591,11 @@ When running Alembic from the host, use a database URL reachable from the host�
 - Provider access tokens are not returned as AegisAI session tokens and are not used for AegisAI authorization.
 - The current project has no published vulnerability-reporting policy. Do not disclose security-sensitive material in a public issue.
 
-## Roadmap
+## Project status
 
-The next implementation milestones are:
-
-1. **Phase 13:** audit logging.
-2. **Phase 14:** administration dashboard.
-3. **Phase 15:** Next.js frontend.
-4. **Phase 16:** observability.
-5. **Phase 17:** CI/CD.
-6. **Phase 18:** Kubernetes.
-7. **Phase 19:** multi-tenancy.
-8. **Phase 20:** enterprise API keys, rate limits, and retention policies.
+Phases 1–20 are implemented on this branch. The repository is intentionally
+local-first: Docker Compose is the supported free evaluation environment, and
+the Kubernetes package is a documented deployment baseline rather than a
+hosted service. Before any production use, supply managed secrets, backup and
+restore procedures, an approved object-storage/retention implementation, TLS,
+and organization-specific compliance review.

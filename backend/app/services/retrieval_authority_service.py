@@ -40,6 +40,7 @@ class RetrievalAuthorityService:
         user_id: int,
         document_ids: list[int] | None = None,
         content_types: list[str] | None = None,
+        tenant_id: int | None = None,
     ) -> list[AuthoritativeRetrievalCandidate]:
         """Return candidates whose Qdrant identity and PostgreSQL state agree."""
         candidate_document_ids = {
@@ -50,6 +51,7 @@ class RetrievalAuthorityService:
         readable_document_ids = self.access_policy.readable_document_ids(
             user_id=user_id,
             document_ids=candidate_document_ids,
+            tenant_id=tenant_id,
         )
         if document_ids is not None:
             readable_document_ids.intersection_update(document_ids)
@@ -79,6 +81,10 @@ class RetrievalAuthorityService:
                 "embedding_provider": embedding.provider,
                 "embedding_model": embedding.model,
             }
+            if tenant_id is not None:
+                expected_payload["tenant_id"] = tenant_id
+            if tenant_id is not None and document.tenant_id != tenant_id:
+                continue
             if any(candidate.payload.get(field) != value for field, value in expected_payload.items()):
                 continue
             resolved.append(

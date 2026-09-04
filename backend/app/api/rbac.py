@@ -22,10 +22,16 @@ from app.schemas.rbac import UserRoleResponse
 from app.services.rbac_service import RbacService
 from app.models.user import User
 from app.security.dependencies import require_permission
+from app.security.dependencies import TenantContext, get_current_tenant_context
 from app.security.permissions import PermissionCode
 
 
 router = APIRouter(prefix="/rbac", tags=["RBAC"])
+
+
+def _tenant_id(context: TenantContext | None) -> int | None:
+    """Return the request tenant, while keeping route functions directly testable."""
+    return getattr(getattr(context, "tenant", None), "id", None)
 
 
 def _service_error_to_http_exception(error: Exception) -> HTTPException:
@@ -104,8 +110,10 @@ def list_permissions(
 )
 def list_roles(
     service: RbacService = Depends(get_rbac_service),
+    context: TenantContext | None = Depends(get_current_tenant_context),
 ):
-    return service.list_roles()
+    tenant_id = getattr(getattr(context, "tenant", None), "id", None)
+    return service.list_roles(tenant_id=tenant_id) if tenant_id is not None else service.list_roles()
 
 
 @router.post(
@@ -118,13 +126,14 @@ def create_role(
     service: RbacService = Depends(get_rbac_service),
     *,
     current_user: User = Depends(require_permission(PermissionCode.ROLES_MANAGE)),
+    context: TenantContext = Depends(get_current_tenant_context),
 ):
     try:
-        return service.create_role(
-            request.name,
-            request.description,
-            actor_user_id=current_user.id,
-        )
+        tenant_id = _tenant_id(context)
+        arguments = {"actor_user_id": current_user.id}
+        if tenant_id is not None:
+            arguments["tenant_id"] = tenant_id
+        return service.create_role(request.name, request.description, **arguments)
     except RoleAlreadyExistsError as error:
         raise _service_error_to_http_exception(error) from error
 
@@ -138,9 +147,14 @@ def delete_role(
     service: RbacService = Depends(get_rbac_service),
     *,
     current_user: User = Depends(require_permission(PermissionCode.ROLES_MANAGE)),
+    context: TenantContext = Depends(get_current_tenant_context),
 ) -> Response:
     try:
-        service.delete_role(role_id, actor_user_id=current_user.id)
+        tenant_id = _tenant_id(context)
+        arguments = {"actor_user_id": current_user.id}
+        if tenant_id is not None:
+            arguments["tenant_id"] = tenant_id
+        service.delete_role(role_id, **arguments)
     except (RoleNotFoundError, SystemRoleModificationError) as error:
         raise _service_error_to_http_exception(error) from error
 
@@ -155,9 +169,11 @@ def delete_role(
 def list_role_permissions(
     role_id: int,
     service: RbacService = Depends(get_rbac_service),
+    context: TenantContext = Depends(get_current_tenant_context),
 ):
     try:
-        return service.list_role_permissions(role_id)
+        tenant_id = _tenant_id(context)
+        return service.list_role_permissions(role_id, tenant_id=tenant_id) if tenant_id is not None else service.list_role_permissions(role_id)
     except RoleNotFoundError as error:
         raise _service_error_to_http_exception(error) from error
 
@@ -173,13 +189,14 @@ def grant_role_permission(
     service: RbacService = Depends(get_rbac_service),
     *,
     current_user: User = Depends(require_permission(PermissionCode.ROLES_MANAGE)),
+    context: TenantContext = Depends(get_current_tenant_context),
 ):
     try:
-        return service.grant_permission(
-            role_id,
-            permission_id,
-            actor_user_id=current_user.id,
-        )
+        tenant_id = _tenant_id(context)
+        arguments = {"actor_user_id": current_user.id}
+        if tenant_id is not None:
+            arguments["tenant_id"] = tenant_id
+        return service.grant_permission(role_id, permission_id, **arguments)
     except (
         RoleNotFoundError,
         PermissionNotFoundError,
@@ -198,9 +215,14 @@ def revoke_role_permission(
     service: RbacService = Depends(get_rbac_service),
     *,
     current_user: User = Depends(require_permission(PermissionCode.ROLES_MANAGE)),
+    context: TenantContext = Depends(get_current_tenant_context),
 ) -> Response:
     try:
-        service.revoke_permission(role_id, permission_id, actor_user_id=current_user.id)
+        tenant_id = _tenant_id(context)
+        arguments = {"actor_user_id": current_user.id}
+        if tenant_id is not None:
+            arguments["tenant_id"] = tenant_id
+        service.revoke_permission(role_id, permission_id, **arguments)
     except (RoleNotFoundError, RolePermissionNotFoundError) as error:
         raise _service_error_to_http_exception(error) from error
 
@@ -215,9 +237,11 @@ def revoke_role_permission(
 def list_user_roles(
     user_id: int,
     service: RbacService = Depends(get_rbac_service),
+    context: TenantContext = Depends(get_current_tenant_context),
 ):
     try:
-        return service.list_user_roles(user_id)
+        tenant_id = _tenant_id(context)
+        return service.list_user_roles(user_id, tenant_id=tenant_id) if tenant_id is not None else service.list_user_roles(user_id)
     except UserNotFoundError as error:
         raise _service_error_to_http_exception(error) from error
 
@@ -233,9 +257,14 @@ def assign_user_role(
     service: RbacService = Depends(get_rbac_service),
     *,
     current_user: User = Depends(require_permission(PermissionCode.ROLES_ASSIGN)),
+    context: TenantContext = Depends(get_current_tenant_context),
 ):
     try:
-        return service.assign_role(user_id, role_id, actor_user_id=current_user.id)
+        tenant_id = _tenant_id(context)
+        arguments = {"actor_user_id": current_user.id}
+        if tenant_id is not None:
+            arguments["tenant_id"] = tenant_id
+        return service.assign_role(user_id, role_id, **arguments)
     except (
         UserNotFoundError,
         RoleNotFoundError,
@@ -254,9 +283,14 @@ def remove_user_role(
     service: RbacService = Depends(get_rbac_service),
     *,
     current_user: User = Depends(require_permission(PermissionCode.ROLES_ASSIGN)),
+    context: TenantContext = Depends(get_current_tenant_context),
 ) -> Response:
     try:
-        service.remove_role(user_id, role_id, actor_user_id=current_user.id)
+        tenant_id = _tenant_id(context)
+        arguments = {"actor_user_id": current_user.id}
+        if tenant_id is not None:
+            arguments["tenant_id"] = tenant_id
+        service.remove_role(user_id, role_id, **arguments)
     except (
         UserNotFoundError,
         RoleNotFoundError,

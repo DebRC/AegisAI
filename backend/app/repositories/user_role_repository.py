@@ -18,22 +18,18 @@ class UserRoleRepository:
         self,
         user_id: int,
         role_id: int,
+        tenant_id: int | None = None,
     ) -> UserRole | None:
-        return self.db.scalar(
-            select(UserRole).where(
-                UserRole.user_id == user_id,
-                UserRole.role_id == role_id,
-            )
-        )
+        statement = select(UserRole).where(UserRole.user_id == user_id, UserRole.role_id == role_id)
+        if tenant_id is not None:
+            statement = statement.where(UserRole.tenant_id.in_((tenant_id, None)))
+        return self.db.scalar(statement)
 
-    def list_by_user_id(self, user_id: int) -> list[UserRole]:
-        return list(
-            self.db.scalars(
-                select(UserRole)
-                .where(UserRole.user_id == user_id)
-                .order_by(UserRole.role_id)
-            )
-        )
+    def list_by_user_id(self, user_id: int, *, tenant_id: int | None = None) -> list[UserRole]:
+        statement = select(UserRole).where(UserRole.user_id == user_id)
+        if tenant_id is not None:
+            statement = statement.where(UserRole.tenant_id.in_((tenant_id, None)))
+        return list(self.db.scalars(statement.order_by(UserRole.role_id)))
 
     def delete(self, assignment: UserRole) -> None:
         self.db.delete(assignment)
