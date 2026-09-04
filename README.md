@@ -317,7 +317,7 @@ OpenAPI documentation is available at `http://localhost:8000/docs`. It is the co
 | `POST` | `/tenants/{tenant_id}/memberships` | Add an existing active AegisAI user to the active tenant; requires `roles:assign`. |
 | `GET` | `/auth/sso/{provider}` | Start a browser SSO flow for `google`, `github`, or `microsoft`. |
 | `GET` | `/protected` | Minimal protected-route example. |
-| `/rbac/*` | See the RBAC section below | Manage roles and assignments with administrator permissions. |
+| `/rbac/*` | See the RBAC section below | Manage roles and assignments with administrator permissions. The browser controls are available at `/admin/rbac` and `/admin/users`. |
 | `POST` | `/documents` | Upload an allowed document with `documents:write`. |
 | `GET` | `/documents?offset=0&limit=25` | List document metadata with `documents:read`. |
 | `GET`, `PATCH`, `DELETE` | `/documents/{document_id}` | Inspect with `documents:read`; rename or delete with `documents:write`. |

@@ -55,7 +55,7 @@ export interface RetrievalResponse { items: RetrievalResult[]; limit: number; }
 export interface AdminOverview { total_users: number; active_users: number; documents_by_status: Record<string, number>; jobs_by_status: Record<string, number>; recent_event_count: number; }
 export interface AdminUser { id: number; email: string; full_name: string; is_active: boolean; roles: { id: number; name: string }[]; }
 export interface AdminUserPage { items: AdminUser[]; offset: number; limit: number; total: number; }
-export interface AdminRole { id: number; name: string; description: string | null; permission_codes: string[]; user_count: number; }
+export interface AdminRole { id: number; name: string; description: string | null; is_system: boolean; permission_codes: string[]; user_count: number; }
 export interface AdminPermission { id: number; code: string; description: string; role_count: number; }
 export interface AdminDocument { id: number; title: string; original_filename: string; content_type: string; status: string; uploader_user_id: number; processing_error: string | null; deleted_at: string | null; }
 export interface AdminDocumentPage { items: AdminDocument[]; offset: number; limit: number; total: number; }

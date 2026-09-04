@@ -23,6 +23,14 @@ will not contain roles or permissions. This means role changes and revocations
 take effect on the next request instead of waiting for an access token to
 expire.
 
+## Browser administration
+
+An administrator can use `/admin/rbac` to create a tenant-local custom role,
+starting from a least-privilege template or selected permissions. The page also
+allows permission changes for custom roles. The system `administrator` role is
+visible but protected from browser editing. Use `/admin/users` to assign a
+created role to an active member of the current organization.
+
 ## Permission contract
 
 Permission values use the stable format `resource:action`. The canonical
