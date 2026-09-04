@@ -116,6 +116,7 @@ export const aegisApi = {
   adminOverview(accessToken: string): Promise<AdminOverview> { return backendRequest("/admin/overview", { headers: { Authorization: `Bearer ${accessToken}` } }); },
   adminUsers(accessToken: string): Promise<AdminUserPage> { return backendRequest("/admin/users", { headers: { Authorization: `Bearer ${accessToken}` } }); },
   setAdminUserStatus(accessToken: string, userId: number, isActive: boolean): Promise<unknown> { return backendRequest(`/admin/users/${userId}/status`, { method: "PATCH", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ is_active: isActive }) }); },
+  assignUserRole(accessToken: string, userId: number, roleId: number): Promise<unknown> { return backendRequest(`/rbac/users/${userId}/roles/${roleId}`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}` } }); },
   adminRoles(accessToken: string): Promise<import("../api/types").AdminRole[]> { return backendRequest("/admin/roles", { headers: { Authorization: `Bearer ${accessToken}` } }); },
   adminPermissions(accessToken: string): Promise<import("../api/types").AdminPermission[]> { return backendRequest("/admin/permissions", { headers: { Authorization: `Bearer ${accessToken}` } }); },
   adminDocuments(accessToken: string): Promise<import("../api/types").AdminDocumentPage> { return backendRequest("/admin/documents", { headers: { Authorization: `Bearer ${accessToken}` } }); },
