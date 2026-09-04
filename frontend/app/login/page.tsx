@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [state, setState] = useState<FormState>("idle");
   const [message, setMessage] = useState("");
 
@@ -24,8 +26,9 @@ export default function LoginPage() {
       setState("error");
       return;
     }
-    setMessage("Signed in successfully. Your workspace arrives in the next checkpoint.");
+    setMessage("Opening your workspace…");
     setState("success");
+    router.replace("/documents");
   }
 
   return (
