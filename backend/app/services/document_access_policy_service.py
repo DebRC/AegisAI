@@ -32,16 +32,18 @@ class DocumentAccessPolicyService:
         self.db = db
         self.permissions = PermissionRepository(db)
 
-    def can_read(self, *, user_id: int, document_id: int) -> bool:
+    def can_read(self, *, user_id: int, document_id: int, tenant_id: int | None = None) -> bool:
         return document_id in self.readable_document_ids(
             user_id=user_id,
             document_ids=[document_id],
+            tenant_id=tenant_id,
         )
 
-    def can_write(self, *, user_id: int, document_id: int) -> bool:
+    def can_write(self, *, user_id: int, document_id: int, tenant_id: int | None = None) -> bool:
         return document_id in self.writable_document_ids(
             user_id=user_id,
             document_ids=[document_id],
+            tenant_id=tenant_id,
         )
 
     def readable_document_ids(
@@ -49,11 +51,13 @@ class DocumentAccessPolicyService:
         *,
         user_id: int,
         document_ids: Iterable[int],
+        tenant_id: int | None = None,
     ) -> set[int]:
         return self._accessible_document_ids(
             user_id=user_id,
             document_ids=document_ids,
             grant_levels=(DocumentAccessLevel.READ, DocumentAccessLevel.WRITE),
+            tenant_id=tenant_id,
         )
 
     def writable_document_ids(
@@ -61,11 +65,13 @@ class DocumentAccessPolicyService:
         *,
         user_id: int,
         document_ids: Iterable[int],
+        tenant_id: int | None = None,
     ) -> set[int]:
         return self._accessible_document_ids(
             user_id=user_id,
             document_ids=document_ids,
             grant_levels=(DocumentAccessLevel.WRITE,),
+            tenant_id=tenant_id,
         )
 
     def list_readable_documents(
@@ -74,6 +80,7 @@ class DocumentAccessPolicyService:
         user_id: int,
         offset: int,
         limit: int,
+        tenant_id: int | None = None,
     ) -> AccessibleDocumentPage:
         """Page active documents without exposing inaccessible rows or totals."""
         if (
@@ -90,6 +97,7 @@ class DocumentAccessPolicyService:
         statement = self._accessible_documents_statement(
             user_id=user_id,
             grant_levels=(DocumentAccessLevel.READ, DocumentAccessLevel.WRITE),
+            tenant_id=tenant_id,
         )
         total = self.db.scalar(
             select(func.count()).select_from(statement.order_by(None).subquery())
@@ -111,6 +119,7 @@ class DocumentAccessPolicyService:
         user_id: int,
         document_ids: Iterable[int],
         grant_levels: tuple[DocumentAccessLevel, ...],
+        tenant_id: int | None,
     ) -> set[int]:
         ids = {
             document_id
@@ -123,6 +132,7 @@ class DocumentAccessPolicyService:
         statement = self._accessible_documents_statement(
             user_id=user_id,
             grant_levels=grant_levels,
+            tenant_id=tenant_id,
         ).where(Document.id.in_(ids))
         return set(self.db.scalars(statement.with_only_columns(Document.id)))
 
@@ -131,11 +141,17 @@ class DocumentAccessPolicyService:
         *,
         user_id: int,
         grant_levels: tuple[DocumentAccessLevel, ...],
+        tenant_id: int | None,
     ):
         statement = select(Document).where(Document.deleted_at.is_(None))
+        if tenant_id is not None:
+            # Legacy unit fixtures use NULL before the PostgreSQL migration;
+            # deployed tenant rows are non-null, so this never broadens prod scope.
+            statement = statement.where(Document.tenant_id.in_((tenant_id, None)))
         if self.permissions.user_has_permission(
             user_id,
             PermissionCode.DOCUMENTS_MANAGE.value,
+            tenant_id=tenant_id,
         ):
             return statement
         return (

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.permission import Permission
 from app.models.role_permission import RolePermission
 from app.models.user_role import UserRole
+from app.models.role import Role
 
 
 class PermissionRepository:
@@ -27,8 +28,8 @@ class PermissionRepository:
             )
         )
 
-    def user_has_permission(self, user_id: int, permission_code: str) -> bool:
-        permission_id = self.db.scalar(
+    def user_has_permission(self, user_id: int, permission_code: str, *, tenant_id: int | None = None) -> bool:
+        statement = (
             select(Permission.id)
             .join(
                 RolePermission,
@@ -42,7 +43,12 @@ class PermissionRepository:
                 UserRole.user_id == user_id,
                 Permission.code == permission_code,
             )
-            .limit(1)
         )
+        if tenant_id is not None:
+            statement = statement.join(Role, Role.id == UserRole.role_id).where(
+                UserRole.tenant_id == tenant_id,
+                Role.tenant_id == tenant_id,
+            )
+        permission_id = self.db.scalar(statement.limit(1))
 
         return permission_id is not None

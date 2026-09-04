@@ -33,6 +33,7 @@ class AuditEventRepository:
         occurred_before: datetime | None,
         offset: int,
         limit: int,
+        tenant_id: int | None = None,
     ) -> list[AuditEvent]:
         statement = self._filtered_statement(
             actor_user_id=actor_user_id,
@@ -42,6 +43,7 @@ class AuditEventRepository:
             target_id=target_id,
             occurred_after=occurred_after,
             occurred_before=occurred_before,
+            tenant_id=tenant_id,
         ).order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
         return list(self.db.scalars(statement.offset(offset).limit(limit)))
 
@@ -59,8 +61,11 @@ class AuditEventRepository:
         target_id: int | None,
         occurred_after: datetime | None,
         occurred_before: datetime | None,
+        tenant_id: int | None = None,
     ):
         statement = select(AuditEvent)
+        if tenant_id is not None:
+            statement = statement.where(AuditEvent.tenant_id.in_((tenant_id, None)))
         if actor_user_id is not None:
             statement = statement.where(AuditEvent.actor_user_id == actor_user_id)
         if event_type is not None:

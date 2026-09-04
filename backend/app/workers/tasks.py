@@ -14,6 +14,7 @@ from app.services.processing_job_service import ProcessingJobService
 from app.services.processing_job_dispatcher import ProcessingJobDispatcher
 from app.services.embedding_indexing_service import EmbeddingIndexingService
 from app.services.vector_cleanup_service import VectorCleanupService
+from app.services.retention_service import RetentionService
 from app.services.text_extraction_service import TextExtractionService
 from app.integrations.vector_store.qdrant_client import create_qdrant_client
 from app.integrations.vector_store.qdrant_store import QdrantVectorStore
@@ -143,6 +144,23 @@ def dispatch_processing_outbox() -> dict[str, int]:
         )
         summary = dispatcher.dispatch_pending()
         return {"published": summary.published, "deferred": summary.deferred}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.workers.tasks.run_retention_sweep")
+def run_retention_sweep() -> dict[str, int]:
+    """Apply enabled tenant retention policies outside an HTTP request."""
+    db = SessionLocal()
+    try:
+        service = RetentionService(
+            db,
+            LocalDocumentStorage(
+                settings.DOCUMENT_STORAGE_PATH,
+                settings.DOCUMENT_MAX_UPLOAD_BYTES,
+            ),
+        )
+        return {"purged_count": service.sweep_all_tenants()}
     finally:
         db.close()
 

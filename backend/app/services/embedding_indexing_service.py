@@ -150,6 +150,7 @@ class EmbeddingIndexingService:
                         content_type=document.content_type,
                         embedding_provider=embedding_batch.provider,
                         embedding_model=embedding_batch.model,
+                        tenant_id=document.tenant_id or 0,
                     )
                 )
                 indexed_chunks.append(

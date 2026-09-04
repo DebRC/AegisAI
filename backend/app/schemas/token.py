@@ -19,6 +19,8 @@ class LoginResponse(TokenResponse):
 
     user: UserResponse
 
+    tenant_id: int | None = None
+
 
 class TokenPayload(BaseModel):
 
@@ -27,3 +29,5 @@ class TokenPayload(BaseModel):
     type: TokenType
 
     exp: datetime
+
+    tenant_id: int | None = None

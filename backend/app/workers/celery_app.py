@@ -31,7 +31,11 @@ def create_celery_app() -> Celery:
             "dispatch-processing-outbox": {
                 "task": "app.workers.tasks.dispatch_processing_outbox",
                 "schedule": settings.PROCESSING_OUTBOX_DISPATCH_INTERVAL_SECONDS,
-            }
+            },
+            "run-retention-sweep": {
+                "task": "app.workers.tasks.run_retention_sweep",
+                "schedule": settings.RETENTION_SWEEP_INTERVAL_SECONDS,
+            },
         },
     )
     return application

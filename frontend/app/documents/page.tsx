@@ -19,7 +19,7 @@ export default function DocumentsPage() {
     setMessage(response.ok ? "Upload accepted; processing has started." : (await response.json().catch(() => ({}))).detail ?? "Upload failed.");
     if (response.ok) { event.currentTarget.reset(); await load(); }
   }
-  return <main className="shell"><section className="hero"><p className="eyebrow">AegisAI workspace</p><h1>Documents</h1>
+  return <main className="shell"><section className="hero"><p className="eyebrow">AegisAI workspace</p><h1>Documents</h1><p><Link href="/tenants">Switch organization</Link></p>
     <form className="auth-form" onSubmit={upload}><label>Upload document<input name="file" type="file" required accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" /></label><button className="primary-action">Upload</button></form><p aria-live="polite">{message}</p>
     {!page ? <p>Loading documents…</p> : page.items.length === 0 ? <p>No readable documents yet.</p> : <ul>{page.items.map((document) => <li key={document.id}><Link href={`/documents/${document.id}`}><strong>{document.title}</strong></Link> — {document.status} — {document.original_filename}</li>)}</ul>}
   </section></main>;

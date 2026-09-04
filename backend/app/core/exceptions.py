@@ -108,3 +108,23 @@ class ProcessingJobStateError(Exception):
 
 class ProcessingJobPersistenceError(Exception):
     """Raised when durable job or outbox state cannot be committed."""
+
+
+class ApiKeyAuthenticationError(Exception):
+    """Raised when a presented machine credential is absent, expired, or invalid."""
+
+
+class ApiKeyValidationError(Exception):
+    """Raised when API-key lifecycle input violates the governance contract."""
+
+
+class RateLimitExceededError(Exception):
+    """Raised when a tenant principal exceeds its bounded request allowance."""
+
+
+class RateLimitUnavailableError(Exception):
+    """Raised when the configured rate-limit authority cannot be reached."""
+
+
+class RetentionPolicyValidationError(Exception):
+    """Raised when automatic source-document expiry is configured unsafely."""

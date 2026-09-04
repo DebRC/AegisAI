@@ -55,6 +55,7 @@ class DocumentService:
         self,
         *,
         uploader_user_id: int,
+        tenant_id: int | None = None,
         original_filename: str,
         content_type: str,
         chunks: Iterable[bytes],
@@ -65,12 +66,17 @@ class DocumentService:
             original_filename=original_filename,
             content_type=content_type,
         )
-        stored = self.storage.store(chunks)
+        stored = (
+            self.storage.store(chunks, tenant_id=tenant_id)
+            if tenant_id is not None
+            else self.storage.store(chunks)
+        )
 
         try:
             document = self.documents.create(
                 Document(
                     uploader_user_id=uploader_user_id,
+                    tenant_id=tenant_id,
                     title=title,
                     original_filename=filename,
                     content_type=normalized_content_type,
@@ -86,6 +92,7 @@ class DocumentService:
                 actor_user_id=uploader_user_id,
                 target_type="document",
                 target_id=document.id,
+                tenant_id=tenant_id,
                 metadata={"content_type": normalized_content_type},
             )
             self._commit()
@@ -95,7 +102,7 @@ class DocumentService:
             self._remove_stored_document(stored)
             raise DocumentPersistenceError() from error
 
-    def list_documents(self, *, offset: int, limit: int) -> DocumentPage:
+    def list_documents(self, *, offset: int, limit: int, tenant_id: int | None = None) -> DocumentPage:
         """Return a bounded page of non-deleted document metadata."""
         if not isinstance(offset, int) or offset < 0:
             raise DocumentValidationError()
@@ -103,10 +110,10 @@ class DocumentService:
             raise DocumentValidationError()
 
         return DocumentPage(
-            items=self.documents.list_active(offset=offset, limit=limit),
+            items=self.documents.list_active(offset=offset, limit=limit, tenant_id=tenant_id),
             offset=offset,
             limit=limit,
-            total=self.documents.count_active(),
+            total=self.documents.count_active(tenant_id=tenant_id),
         )
 
     def get_document(
@@ -114,9 +121,10 @@ class DocumentService:
         document_id: int,
         *,
         audit_actor_user_id: int | None = None,
+        tenant_id: int | None = None,
     ) -> Document:
         """Return non-deleted metadata or hide deleted records as not found."""
-        document = self._get_active_document(document_id)
+        document = self._get_active_document(document_id, tenant_id=tenant_id)
         if audit_actor_user_id is not None:
             self.audit_events.record_best_effort(
                 event_type=AuditEventType.DOCUMENT_READ,
@@ -127,8 +135,8 @@ class DocumentService:
             )
         return document
 
-    def _get_active_document(self, document_id: int) -> Document:
-        document = self.documents.get_active_by_id(document_id)
+    def _get_active_document(self, document_id: int, *, tenant_id: int | None = None) -> Document:
+        document = self.documents.get_active_by_id(document_id, tenant_id=tenant_id)
         if document is None:
             raise DocumentNotFoundError()
         return document
@@ -139,10 +147,11 @@ class DocumentService:
         title: str,
         *,
         actor_user_id: int | None = None,
+        tenant_id: int | None = None,
     ) -> Document:
         """Change only an active document's display title."""
         normalized_title = self._validate_title(title)
-        document = self._get_active_document(document_id)
+        document = self._get_active_document(document_id, tenant_id=tenant_id)
         document.title = normalized_title
 
         try:
@@ -153,6 +162,7 @@ class DocumentService:
                 actor_user_id=actor_user_id,
                 target_type="document",
                 target_id=document.id,
+                tenant_id=tenant_id,
             )
             self._commit()
             return document
@@ -160,9 +170,15 @@ class DocumentService:
             self.db.rollback()
             raise DocumentPersistenceError() from error
 
-    def delete_document(self, document_id: int, *, actor_user_id: int | None = None) -> None:
+    def delete_document(
+        self,
+        document_id: int,
+        *,
+        actor_user_id: int | None = None,
+        tenant_id: int | None = None,
+    ) -> None:
         """Soft-delete metadata, then make a best-effort object cleanup attempt."""
-        document = self._get_active_document(document_id)
+        document = self._get_active_document(document_id, tenant_id=tenant_id)
 
         try:
             self.processing_jobs.cancel_document_jobs(document_id=document.id)
@@ -176,6 +192,7 @@ class DocumentService:
                 actor_user_id=actor_user_id,
                 target_type="document",
                 target_id=document.id,
+                tenant_id=tenant_id,
             )
             self._commit()
         except Exception as error:

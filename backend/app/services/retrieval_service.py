@@ -39,6 +39,7 @@ class RetrievalService:
         request: RetrievalSearchRequest,
         *,
         user_id: int,
+        tenant_id: int | None = None,
     ) -> RetrievalSearchResponse:
         """Search with bounded over-fetching, authority validation, and stable ranking."""
         try:
@@ -52,6 +53,7 @@ class RetrievalService:
                     limit=min(_MAX_CANDIDATE_LIMIT, max(request.limit * 3, request.limit)),
                     document_ids=request.document_ids,
                     content_types=request.content_types,
+                    tenant_id=tenant_id,
                 )
             finally:
                 try:
@@ -66,6 +68,7 @@ class RetrievalService:
                 user_id=user_id,
                 document_ids=request.document_ids,
                 content_types=request.content_types,
+                tenant_id=tenant_id,
             )
             ranked = sorted(authoritative, key=self._ranking_key)
             response = RetrievalSearchResponse(
@@ -73,12 +76,17 @@ class RetrievalService:
                 limit=request.limit,
             )
         except Exception:
-            self._record_search(user_id=user_id, outcome=AuditEventOutcome.FAILED)
+            self._record_search(
+                user_id=user_id,
+                outcome=AuditEventOutcome.FAILED,
+                tenant_id=tenant_id,
+            )
             raise
         self._record_search(
             user_id=user_id,
             outcome=AuditEventOutcome.SUCCEEDED,
             result_count=len(response.items),
+            tenant_id=tenant_id,
         )
         return response
 
@@ -88,6 +96,7 @@ class RetrievalService:
         user_id: int,
         outcome: AuditEventOutcome,
         result_count: int | None = None,
+        tenant_id: int | None = None,
     ) -> None:
         if self.audit_events is None:
             return
@@ -97,6 +106,7 @@ class RetrievalService:
             outcome=outcome,
             actor_user_id=user_id,
             metadata=metadata,
+            tenant_id=tenant_id,
         )
 
     @staticmethod

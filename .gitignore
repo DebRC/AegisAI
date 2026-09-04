@@ -16,6 +16,8 @@ backend/app/chat/__pycache__
 backend/app/embeddings/__pycache__
 backend/app/integrations/__pycache__
 backend/app/integrations/vector_store/__pycache__
+__pycache__/
+*.py[cod]
 frontend/node_modules/
 frontend/.next/
 frontend/tsconfig.tsbuildinfo

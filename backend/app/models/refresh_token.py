@@ -35,6 +35,10 @@ class RefreshToken(Base):
         nullable=False,
     )
 
+    tenant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=True
+    )
+
     user: Mapped["User"] = relationship(
         back_populates="refresh_tokens",
     )

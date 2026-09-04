@@ -22,13 +22,11 @@ class DocumentRepository:
             select(Document).where(Document.id == document_id)
         )
 
-    def get_active_by_id(self, document_id: int) -> Document | None:
-        return self.db.scalar(
-            select(Document).where(
-                Document.id == document_id,
-                Document.deleted_at.is_(None),
-            )
-        )
+    def get_active_by_id(self, document_id: int, *, tenant_id: int | None = None) -> Document | None:
+        statement = select(Document).where(Document.id == document_id, Document.deleted_at.is_(None))
+        if tenant_id is not None:
+            statement = statement.where(Document.tenant_id.in_((tenant_id, None)))
+        return self.db.scalar(statement)
 
     def get_active_by_id_for_update(self, document_id: int) -> Document | None:
         """Lock an active document while changing its processing lifecycle."""
@@ -41,39 +39,35 @@ class DocumentRepository:
             .with_for_update()
         )
 
-    def list_active(self, *, offset: int, limit: int) -> list[Document]:
-        return list(
-            self.db.scalars(
-                select(Document)
-                .where(Document.deleted_at.is_(None))
-                .order_by(Document.created_at.desc(), Document.id.desc())
-                .offset(offset)
-                .limit(limit)
-            )
-        )
+    def list_active(self, *, offset: int, limit: int, tenant_id: int | None = None) -> list[Document]:
+        statement = select(Document).where(Document.deleted_at.is_(None))
+        if tenant_id is not None:
+            statement = statement.where(Document.tenant_id.in_((tenant_id, None)))
+        return list(self.db.scalars(statement.order_by(Document.created_at.desc(), Document.id.desc()).offset(offset).limit(limit)))
 
-    def count_active(self) -> int:
-        return self.db.scalar(
-            select(func.count())
-            .select_from(Document)
-            .where(Document.deleted_at.is_(None))
-        ) or 0
+    def count_active(self, *, tenant_id: int | None = None) -> int:
+        statement = select(func.count()).select_from(Document).where(Document.deleted_at.is_(None))
+        if tenant_id is not None:
+            statement = statement.where(Document.tenant_id.in_((tenant_id, None)))
+        return self.db.scalar(statement) or 0
 
     def list_for_administration(
-        self, *, offset: int, limit: int, status: str | None, uploader_user_id: int | None
+        self, *, offset: int, limit: int, status: str | None, uploader_user_id: int | None, tenant_id: int | None = None
     ) -> list[Document]:
-        statement = self._administration_statement(status=status, uploader_user_id=uploader_user_id)
+        statement = self._administration_statement(status=status, uploader_user_id=uploader_user_id, tenant_id=tenant_id)
         return list(self.db.scalars(
             statement.order_by(Document.created_at.desc(), Document.id.desc()).offset(offset).limit(limit)
         ))
 
-    def count_for_administration(self, *, status: str | None, uploader_user_id: int | None) -> int:
-        statement = self._administration_statement(status=status, uploader_user_id=uploader_user_id)
+    def count_for_administration(self, *, status: str | None, uploader_user_id: int | None, tenant_id: int | None = None) -> int:
+        statement = self._administration_statement(status=status, uploader_user_id=uploader_user_id, tenant_id=tenant_id)
         return self.db.scalar(select(func.count()).select_from(statement.subquery())) or 0
 
     @staticmethod
-    def _administration_statement(*, status: str | None, uploader_user_id: int | None):
+    def _administration_statement(*, status: str | None, uploader_user_id: int | None, tenant_id: int | None):
         statement = select(Document)
+        if tenant_id is not None:
+            statement = statement.where(Document.tenant_id == tenant_id)
         if status is not None:
             statement = statement.where(Document.status == status)
         if uploader_user_id is not None:

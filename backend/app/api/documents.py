@@ -34,6 +34,8 @@ from app.schemas.document import ProcessingJobListResponse
 from app.schemas.document import ProcessingJobResponse
 from app.security.dependencies import require_permission
 from app.security.permissions import PermissionCode
+from app.security.dependencies import TenantContext
+from app.security.dependencies import get_current_tenant_context
 from app.services.document_service import DocumentService
 from app.services.document_extraction_query_service import DocumentExtractionQueryService
 from app.services.document_embedding_status_service import DocumentEmbeddingStatusService
@@ -104,14 +106,19 @@ def upload_document(
     file: UploadFile = File(...),
     current_user: User = Depends(require_permission(PermissionCode.DOCUMENTS_WRITE)),
     service: DocumentService = Depends(get_document_service),
+    context: TenantContext | None = Depends(get_current_tenant_context),
 ) -> DocumentResponse:
     try:
-        return service.upload(
+        upload_arguments = dict(
             uploader_user_id=current_user.id,
             original_filename=file.filename or "",
             content_type=file.content_type or "",
             chunks=_file_chunks(file),
         )
+        tenant_id = getattr(getattr(context, "tenant", None), "id", None)
+        if tenant_id is not None:
+            upload_arguments["tenant_id"] = tenant_id
+        return service.upload(**upload_arguments)
     except (
         DocumentValidationError,
         EmptyDocumentError,
@@ -131,12 +138,13 @@ def list_documents(
     limit: int = Query(default=25, ge=1, le=100),
     current_user: User = Depends(require_permission(PermissionCode.DOCUMENTS_READ)),
     policy: DocumentAccessPolicyService = Depends(get_document_access_policy_service),
+    context: TenantContext | None = Depends(get_current_tenant_context),
 ) -> DocumentListResponse:
-    page = policy.list_readable_documents(
-        user_id=current_user.id,
-        offset=offset,
-        limit=limit,
-    )
+    arguments = {"user_id": current_user.id, "offset": offset, "limit": limit}
+    tenant_id = getattr(getattr(context, "tenant", None), "id", None)
+    if tenant_id is not None:
+        arguments["tenant_id"] = tenant_id
+    page = policy.list_readable_documents(**arguments)
     return DocumentListResponse(
         items=page.items,
         offset=offset,
@@ -153,9 +161,14 @@ def get_document(
     document_id: int,
     service: DocumentService = Depends(get_document_service),
     current_user: User = Depends(require_document_read_access),
+    context: TenantContext | None = Depends(get_current_tenant_context),
 ) -> DocumentResponse:
     try:
-        return service.get_document(document_id, audit_actor_user_id=current_user.id)
+        arguments = {"audit_actor_user_id": current_user.id}
+        tenant_id = getattr(getattr(context, "tenant", None), "id", None)
+        if tenant_id is not None:
+            arguments["tenant_id"] = tenant_id
+        return service.get_document(document_id, **arguments)
     except DocumentNotFoundError as error:
         raise _document_error_to_http_exception(error) from error
 
@@ -246,13 +259,14 @@ def rename_document(
     request: DocumentRenameRequest,
     service: DocumentService = Depends(get_document_service),
     current_user: User = Depends(require_document_write_access),
+    context: TenantContext | None = Depends(get_current_tenant_context),
 ) -> DocumentResponse:
     try:
-        return service.rename_document(
-            document_id,
-            request.title,
-            actor_user_id=current_user.id,
-        )
+        arguments = {"actor_user_id": current_user.id}
+        tenant_id = getattr(getattr(context, "tenant", None), "id", None)
+        if tenant_id is not None:
+            arguments["tenant_id"] = tenant_id
+        return service.rename_document(document_id, request.title, **arguments)
     except (
         DocumentValidationError,
         DocumentNotFoundError,
@@ -269,9 +283,14 @@ def delete_document(
     document_id: int,
     service: DocumentService = Depends(get_document_service),
     current_user: User = Depends(require_document_write_access),
+    context: TenantContext | None = Depends(get_current_tenant_context),
 ) -> Response:
     try:
-        service.delete_document(document_id, actor_user_id=current_user.id)
+        arguments = {"actor_user_id": current_user.id}
+        tenant_id = getattr(getattr(context, "tenant", None), "id", None)
+        if tenant_id is not None:
+            arguments["tenant_id"] = tenant_id
+        service.delete_document(document_id, **arguments)
     except (DocumentNotFoundError, DocumentPersistenceError) as error:
         raise _document_error_to_http_exception(error) from error
 
